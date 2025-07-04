@@ -68,19 +68,6 @@ client.onAgentsSensing(agents => {
     // console.log('Agents:', agentList);
 });
 
-// Update the parcel in carryingParcels or knownParcels
-// If the parcel is carried by this agent, it goes to carryingParcels
-function updateCarryingParcel(parcel) {
-    if (knownParcels.has(parcel.id)) {
-        // Moved from known to carrying after pickup
-        knownParcels.delete(parcel.id);
-    }
-    carryingParcels.set(parcel.id, {
-        reward: parcel.reward,
-        lastUpdate: Date.now()
-    });
-}
-
 // Update the parcel in knownParcels
 // If the reward is 1 or less, it is removed from knownParcels and carryingParcels
 function updateExpiredParcel(parcel) {
@@ -93,19 +80,18 @@ function updateExpiredParcel(parcel) {
         });
     } else {
         knownParcels.delete(parcel.id);
-        carryingParcels.delete(parcel.id);
+        // carryingParcels.delete(parcel.id);
     }
-}
-
-// Remove the parcel from knownParcels and carryingParcels if it is carried by someone else
-
-function removeParcelIfCarriedByOthers(parcel) {
-    knownParcels.delete(parcel.id);
-    carryingParcels.delete(parcel.id);
 }
 
 client.onParcelsSensing(parcels => {
     const seenNow = new Set(parcels.map(p => p.id));
+
+    // Rebuild carryingParcels from scratch every time
+    
+    console.log('Before clear, carryingParcels size:', carryingParcels.size);
+    carryingParcels.clear();
+    console.log('After clear, carryingParcels size:', carryingParcels.size);
 
     // Remove parcels that should be visible but aren't
     for (let [id, parcel] of knownParcels) {
@@ -121,18 +107,25 @@ client.onParcelsSensing(parcels => {
     for (let p of parcels) {
         beliefset.set(p.id, p);
 
+        // Fill carryingParcels with parcels currently carried by me
         if (p.carriedBy === me.id) {
-            updateCarryingParcel(p);
+            carryingParcels.set(p.id, {
+                reward: p.reward,
+                lastUpdate: Date.now()
+            });
             continue;
         }
 
-        if (p.carriedBy === null) {
+        else if (p.carriedBy === null) {
             updateExpiredParcel(p);
             continue;
         }
 
-        // If carried by someone else
-        removeParcelIfCarriedByOthers(p);
+        else if (p.carriedBy !== me.id ) {
+            // If the parcel is carried by someone else, remove it from knownParcels
+            knownParcels.delete(p.id);
+            continue;
+        }
     }
 
     printParcels();
@@ -167,7 +160,6 @@ setInterval(() => {
     const now = Date.now();
 
     decayParcels(knownParcels, now, DECAY_INTERVAL);
-    decayParcels(carryingParcels, now, DECAY_INTERVAL);
 
     printParcels();
 }, 1000);
@@ -189,3 +181,11 @@ function printParcels() {
     console.log('Carrying Parcels:', carryingList);
 }
 
+
+
+
+
+
+
+// the only problem is that when we carry some parcels and we put it down, the carried by attribute doesn't change
+// so we need to update the knownParcels and carryingParcels accordingly
