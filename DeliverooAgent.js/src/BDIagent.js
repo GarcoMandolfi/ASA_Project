@@ -30,21 +30,35 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.score = score
 } )
 
+const deliveryCells = new Map();
+client.onMap((width, height, tiles) => {
+    for (const tile of tiles) {
+        if (parseInt(tile.type) === 2) {
+            deliveryCells.set(tile.x * 1000 + tile.y, tile);
+        }
+    }
+})
+
 /**
- * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number} > }
+ * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastSeen:number} > }
  */
 const parcels = new Map();
 
-client.onParcelsSensing( async ( pp ) => {
+client.onParcelsSensing( async (pp) => {
     for (const p of pp) {
-        parcels.set( p.id, p);
+        parcels.set(p.id, {...p, lastSeen:Date.now()});
     }
-    for ( const p of parcels.values() ) {
-        if ( pp.map( p => p.id ).find( id => id == p.id ) == undefined ) {
-            parcels.delete( p.id );
+    for (const [id, parcel] of parcels) {
+        if (!pp.find(p => p.id === id)) {
+            const positionSeen = pp.some(p => p.x === parcel.x && p.y === parcel.y);
+            if (positionSeen) parcels.delete(id);
         }
     }
-} )
+    for (const p of parcels.values()) {
+        console.log('Parcel present at [' + p.x + ',' + p.y +
+            '] last seen ' + (Date.now() - p.lastSeen) / 1000 + ' ms ago');
+    }
+})
 
 
 
