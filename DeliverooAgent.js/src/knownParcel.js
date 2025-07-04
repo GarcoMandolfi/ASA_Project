@@ -107,8 +107,15 @@ client.onParcelsSensing(parcels => {
     for (let p of parcels) {
         beliefset.set(p.id, p);
 
+        // If the parcel is not in the knownParcels, add it
+        if (p.carriedBy === null) {
+            updateExpiredParcel(p);
+            continue;
+        }
+
         // Fill carryingParcels with parcels currently carried by me
         if (p.carriedBy === me.id) {
+            knownParcels.delete(p.id);
             carryingParcels.set(p.id, {
                 reward: p.reward,
                 lastUpdate: Date.now()
@@ -116,12 +123,8 @@ client.onParcelsSensing(parcels => {
             continue;
         }
 
-        else if (p.carriedBy === null) {
-            updateExpiredParcel(p);
-            continue;
-        }
 
-        else if (p.carriedBy !== me.id ) {
+        if (p.carriedBy !== null && p.carriedBy !== me.id  ) {
             // If the parcel is carried by someone else, remove it from knownParcels
             knownParcels.delete(p.id);
             continue;
@@ -182,10 +185,3 @@ function printParcels() {
 }
 
 
-
-
-
-
-
-// the only problem is that when we carry some parcels and we put it down, the carried by attribute doesn't change
-// so we need to update the knownParcels and carryingParcels accordingly
