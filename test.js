@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 
 const client = new DeliverooApi(
     'http://localhost:8080/',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRjN2Q0MiIsIm5hbWUiOiJNb3J0ZVoiLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTU0NDM1NX0.F8r_xQkLdeBzklf5zTUbw_L_k5ZW1zWQv5JNCw2f-hw'
 );
 
 const beliefset = new Map();
@@ -13,39 +13,39 @@ let DECAY_INTERVAL = 0;
 let OBS_RANGE = 0;
 let me = { id: null, x: 0, y: 0 }; // store agent id too
 
-function parseSecondsString(str) {
-    if (typeof str !== 'string') return NaN;
 
-    if (str === 'infinite') return Infinity;
+// Parse duration strings like '1s', '2s', etc. to milliseconds
+// For now this is For Decay Interval only, but can be extended for other durations
+// 'infinite' is treated as Infinity
 
-    if (str.endsWith('s')) {
-        const seconds = parseInt(str.slice(0, -1));
-        return isNaN(seconds) ? NaN : seconds * 1000;
+function parseDurationToMilliseconds(str) {
+    if (typeof str !== 'string') {
+        throw new Error(`Invalid input: expected a string but got ${typeof str}`);
     }
 
-    return NaN;
+    if (str === 'infinite') {
+        return Infinity;
+    }
+
+    if (str.endsWith('s')) {
+        const seconds = parseInt(str.slice(0, -1), 10);
+        if (isNaN(seconds)) {
+            throw new Error(`Invalid duration format: unable to parse seconds from "${str}"`);
+        }
+        return seconds * 1000;
+    }
+
+    throw new Error(`Invalid duration format: unsupported string "${str}"`);
 }
 
 client.onConfig(config => {
     console.log("Received config:", config);
 
-    DECAY_INTERVAL = parseSecondsString(config.PARCEL_DECADING_INTERVAL);
+    DECAY_INTERVAL = parseDurationToMilliseconds(config.PARCEL_DECADING_INTERVAL);
     OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
 
-    if (isNaN(DECAY_INTERVAL) || isNaN(OBS_RANGE)) {
-        console.error("❌ Invalid config values:", {
-            DECAY_INTERVAL,
-            OBS_RANGE
-        });
-    } else {
-        console.log("✅ Parsed config:", {
-            DECAY_INTERVAL,
-            OBS_RANGE
-        });
-    }
-
-    console.log('decay interval:', DECAY_INTERVAL, 'ms');
-    console.log('observation range:', OBS_RANGE, 'tiles');
+    // console.log('decay interval:', DECAY_INTERVAL, 'ms');
+    // console.log('observation range:', OBS_RANGE, 'tiles');
 });
 
 client.onMap((x, y, tiles) => {
@@ -65,8 +65,44 @@ client.onAgentsSensing(agents => {
     let agentList = Array.from(beliefset.values())
         .map(({ name, x, y, score }) => `${name}(${score}):${x},${y}`)
         .join(' ');
-    console.log('Agents:', agentList);
+    // console.log('Agents:', agentList);
 });
+
+// Update the parcel in carryingParcels or knownParcels
+// If the parcel is carried by this agent, it goes to carryingParcels
+function updateCarryingParcel(parcel) {
+    if (knownParcels.has(parcel.id)) {
+        // Moved from known to carrying after pickup
+        knownParcels.delete(parcel.id);
+    }
+    carryingParcels.set(parcel.id, {
+        reward: parcel.reward,
+        lastUpdate: Date.now()
+    });
+}
+
+// Update the parcel in knownParcels
+// If the reward is 1 or less, it is removed from knownParcels and carryingParcels
+function updateExpiredParcel(parcel) {
+    if (parcel.reward > 1) {
+        knownParcels.set(parcel.id, {
+            x: parcel.x,
+            y: parcel.y,
+            reward: parcel.reward,
+            lastUpdate: Date.now()
+        });
+    } else {
+        knownParcels.delete(parcel.id);
+        carryingParcels.delete(parcel.id);
+    }
+}
+
+// Remove the parcel from knownParcels and carryingParcels if it is carried by someone else
+
+function removeParcelIfCarriedByOthers(parcel) {
+    knownParcels.delete(parcel.id);
+    carryingParcels.delete(parcel.id);
+}
 
 client.onParcelsSensing(parcels => {
     const seenNow = new Set(parcels.map(p => p.id));
@@ -86,94 +122,59 @@ client.onParcelsSensing(parcels => {
         beliefset.set(p.id, p);
 
         if (p.carriedBy === me.id) {
-            // Parcel is carried by me — check if just picked up
-            if (knownParcels.has(p.id)) {
-                // Moved from known to carrying after pickup
-                knownParcels.delete(p.id);
-                carryingParcels.set(p.id, {
-                    reward: p.reward,
-                    lastUpdate: Date.now()
-                });
-            } else {
-                // Already carrying, just update reward and timestamp
-                carryingParcels.set(p.id, {
-                    reward: p.reward,
-                    lastUpdate: Date.now()
-                });
-            }
+            updateCarryingParcel(p);
             continue;
         }
 
         if (p.carriedBy === null) {
-            // Parcel is visible and not carried, update knownParcels
-            if (p.reward > 1) {
-                knownParcels.set(p.id, {
-                    x: p.x,
-                    y: p.y,
-                    reward: p.reward,
-                    lastUpdate: Date.now()
-                });
-            } else {
-                knownParcels.delete(p.id);
-                carryingParcels.delete(p.id);
-            }
+            updateExpiredParcel(p);
             continue;
         }
 
-        // If carried by someone else, remove from known or carrying
-        knownParcels.delete(p.id);
-        carryingParcels.delete(p.id);
+        // If carried by someone else
+        removeParcelIfCarriedByOthers(p);
     }
 
     printParcels();
 });
 
-// Reward decay loop
+// Handle parcel decay
+function decayParcels(parcelMap, now, decayInterval) {
+    for (let [id, parcel] of parcelMap) {
+        const timePassed = now - parcel.lastUpdate;
+
+        if (timePassed >= decayInterval) {
+            const ticks = Math.floor(timePassed / decayInterval);
+            const newReward = Math.max(1, parcel.reward - ticks);
+
+            if (newReward <= 1) {
+                parcelMap.delete(id);
+                continue;
+            }
+
+            parcel.reward = newReward;
+            parcel.lastUpdate += ticks * decayInterval;
+            parcelMap.set(id, parcel);
+        }
+    }
+}
+
+// Periodically decay parcels every second
+// This is a simple simulation of the decay process
 setInterval(() => {
     if (!isFinite(DECAY_INTERVAL)) return;
 
     const now = Date.now();
 
-    // Decay knownParcels
-    for (let [id, parcel] of knownParcels) {
-        const timePassed = now - parcel.lastUpdate;
-
-        if (timePassed >= DECAY_INTERVAL) {
-            const ticks = Math.floor(timePassed / DECAY_INTERVAL);
-            const newReward = Math.max(1, parcel.reward - ticks);
-
-            if (newReward <= 1) {
-                knownParcels.delete(id);
-                continue;
-            }
-
-            parcel.reward = newReward;
-            parcel.lastUpdate += ticks * DECAY_INTERVAL;
-            knownParcels.set(id, parcel);
-        }
-    }
-
-    // Decay carryingParcels
-    for (let [id, parcel] of carryingParcels) {
-        const timePassed = now - parcel.lastUpdate;
-
-        if (timePassed >= DECAY_INTERVAL) {
-            const ticks = Math.floor(timePassed / DECAY_INTERVAL);
-            const newReward = Math.max(1, parcel.reward - ticks);
-
-            if (newReward <= 1) {
-                carryingParcels.delete(id);
-                continue;
-            }
-
-            parcel.reward = newReward;
-            parcel.lastUpdate += ticks * DECAY_INTERVAL;
-            carryingParcels.set(id, parcel);
-        }
-    }
+    decayParcels(knownParcels, now, DECAY_INTERVAL);
+    decayParcels(carryingParcels, now, DECAY_INTERVAL);
 
     printParcels();
 }, 1000);
+
+
+// Print the current state of known and carrying parcels
+// This function is called after every update to knownParcels and carryingParcels
 
 function printParcels() {
     const knownList = Array.from(knownParcels.entries())
@@ -187,3 +188,4 @@ function printParcels() {
     console.log('Known Parcels (tracked):', knownList);
     console.log('Carrying Parcels:', carryingList);
 }
+
