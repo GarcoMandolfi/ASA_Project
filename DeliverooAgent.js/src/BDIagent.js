@@ -11,6 +11,21 @@ function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
     return dx + dy;
 }
 
+let DECAY_INTERVAL = 0;
+let OBS_RANGE = 0;
+
+client.onConfig(config => {
+
+    let decayInterval = config.PARCEL_DECADING_INTERVAL
+
+    if (typeof decayInterval === 'string' && decayInterval.endsWith('s'))
+        DECAY_INTERVAL = parseInt(decayInterval.slice(0, -1), 10) * 1000;
+    else
+        DECAY_INTERVAL = Infinity;
+
+    OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
+
+});
 
 
 /**
@@ -62,12 +77,8 @@ client.onParcelsSensing( async (pp) => {
 
 
 
-/**
- * Options generation and filtering function
- */
-function optionsGeneration () {
 
-    // TODO revisit beliefset revision so to trigger option generation only in the case a new parcel is observed
+function generateOptions () {
 
     /**
      * Options generation
@@ -77,19 +88,22 @@ function optionsGeneration () {
         if ( ! parcel.carriedBy )
             options.push( [ 'go_pick_up', parcel.x, parcel.y, parcel.id ] );
             // myAgent.push( [ 'go_pick_up', parcel.x, parcel.y, parcel.id ] )
+    
+    for (const deliveryCell of deliveryCells.values())
+        options.push( ['go_deliver', deliveryCell.x, deliveryCell.y] );
 
     /**
      * Options filtering
      */
     let best_option;
     let nearest = Number.MAX_VALUE;
-    for (const option of options) {
-        if ( option[0] == 'go_pick_up' ) {
-            let [go_pick_up,x,y,id] = option;
-            let current_d = distance( {x, y}, me )
-            if ( current_d < nearest ) {
-                best_option = option
-                nearest = current_d
+    for (const opt of options) {
+        if ( opt[0] == 'go_pick_up' ) {
+            let [go_pick_up,x,y,id] = opt;
+            let d = distance( {x, y}, me )
+            if ( d < nearest ) {
+                best_option = opt
+                nearest = d
             }
         }
     }
@@ -105,9 +119,9 @@ function optionsGeneration () {
 /**
  * Generate options at every sensing event
  */
-client.onParcelsSensing( optionsGeneration )
-client.onAgentsSensing( optionsGeneration )
-client.onYou( optionsGeneration )
+client.onParcelsSensing( generateOptions )
+client.onAgentsSensing( generateOptions )
+client.onYou( generateOptions )
 
 // /**
 //  * Alternatively, generate options continuously
@@ -391,6 +405,23 @@ class GoPickUp extends Plan {
 
 }
 
+class GoDeliver extends Plan {
+
+    static isApplicableTo ( go_deliver, x, y, id ) {
+        return go_deliver == 'go_deliver';
+    }
+
+    async execute ( go_pick_up, x, y ) {
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await this.subIntention( ['go_to', x, y] );
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await client.emitPutdown()
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        return true;
+    }
+
+}
+
 class BlindMove extends Plan {
 
     static isApplicableTo ( go_to, x, y ) {
@@ -450,4 +481,5 @@ class BlindMove extends Plan {
 
 // plan classes are added to plan library 
 planLibrary.push( GoPickUp )
+planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
