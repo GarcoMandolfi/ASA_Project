@@ -61,6 +61,7 @@ client.onMap((width, height, tiles) => {
     console.log('Map received:', width, height);
 
     deliveryPoints.clear(); // Clear previous entries
+    
     // Create 2D array of tiles
     const tiles2D = [];
     for (let x = 0; x < width; x++) {
@@ -69,17 +70,6 @@ client.onMap((width, height, tiles) => {
             tiles2D[x][y] = null;
         }
     }
-    
-    // Process tiles and identify delivery points
-    let tileid = 1;
-    for (let tile of tiles) {
-        // actually, tile.type is a number, but for some reason it is a string in the client file
-        if (parseInt(tile.type) === 2) {
-            deliveryPoints.set(tileid, { x: tile.x, y: tile.y });
-            tileid++;
-        }
-    }
-    
     
     // Fill the 2D array with tile data
     for (let tile of tiles) {
