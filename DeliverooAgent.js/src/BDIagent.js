@@ -25,15 +25,18 @@ client.onConfig(config => {
         DECAY_INTERVAL = Infinity;
 
     OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
-
 });
 
 setInterval(() => {
     if (!isFinite(DECAY_INTERVAL)) return;
 
+    const carriedTotal = carriedValue(carriedParcels);
+
     decayParcels(parcels, Date.now(), DECAY_INTERVAL);  // Use correct map
 
     printParcels();
+
+    console.log("Total carried reward: "+ carriedTotal);
 }, 1000);
 
 
@@ -84,6 +87,10 @@ function parcelUpdate(parcel) {
         parcels.delete(parcel.id);
 }
 
+function carriedValue(parcels) {
+    return Array.from(carriedParcels.values()).reduce((sum, p) => sum + (p.reward || 0), 0);
+}
+
 client.onParcelsSensing( async (pp) => {
     carriedParcels.clear();
 
@@ -122,39 +129,36 @@ function printParcels() {
 
 function generateOptions () {
 
-    /**
-     * Options generation
-     */
-    const options = []
-    for (const parcel of parcels.values())
-        if ( ! parcel.carriedBy )
-            options.push( [ 'go_pick_up', parcel.x, parcel.y, parcel.id ] );
-            // myAgent.push( [ 'go_pick_up', parcel.x, parcel.y, parcel.id ] )
-    
-    for (const deliveryCell of deliveryCells.values())
-        options.push( ['go_deliver', deliveryCell.x, deliveryCell.y] );
+    const carriedTotal = carriedValue(carriedParcels);
 
-    /**
-     * Options filtering
-     */
-    let best_option;
-    let nearest = Number.MAX_VALUE;
-    for (const opt of options) {
-        if ( opt[0] == 'go_pick_up' ) {
-            let [go_pick_up,x,y,id] = opt;
-            let d = distance( {x, y}, me )
-            if ( d < nearest ) {
-                best_option = opt
-                nearest = d
+    let best_option = null;
+    let best_distance = Number.MAX_VALUE;
+
+    // Check delivery option if carrying valuable parcels
+    if (carriedTotal >= 60) {
+        for (const cell of deliveryCells.values()) {
+            const d = distance(me, {x: cell.x, y: cell.y});
+            if (d < best_distance) {
+                best_distance = d;
+                best_option = ['go_deliver', cell.x, cell.y];
             }
         }
     }
 
-    /**
-     * Best option is selected
-     */
-    if ( best_option )
-        myAgent.push( best_option )
+    // Always consider pickup options too, and pick nearest
+    for (const parcel of parcels.values()) {
+        if (!parcel.carriedBy) {
+            const d = distance(me, {x: parcel.x, y: parcel.y});
+            if (d < best_distance) {
+                best_distance = d;
+                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id];
+            }
+        }
+    }
+
+    // Push the best option found
+    if (best_option)
+        myAgent.push(best_option);
 
 }
 
@@ -164,20 +168,6 @@ function generateOptions () {
 client.onParcelsSensing( generateOptions )
 client.onAgentsSensing( generateOptions )
 client.onYou( generateOptions )
-
-// /**
-//  * Alternatively, generate options continuously
-//  */
-// while (true) {
-//     if ( ! me.id || ! parcels.size ) {
-//         await new Promise( res => setTimeout( res, 100 ) );
-//         continue;
-//     }
-//     optionsGeneration();
-//     await new Promise( res => setTimeout( res ) );
-// }
-
-
 
 /**
  * Intention revision loop
@@ -193,7 +183,7 @@ class IntentionRevision {
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
-                // console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
+                console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
             
                 // Current intention
                 const intention = this.intention_queue[0];
@@ -203,7 +193,7 @@ class IntentionRevision {
                 let id = intention.predicate[2]
                 let p = parcels.get(id)
                 if ( p && p.carriedBy ) {
-                    // console.log( 'Skipping intention because no more valid', intention.predicate )
+                    console.log( 'Skipping intention because no more valid', intention.predicate )
                     continue;
                 }
 
@@ -211,7 +201,7 @@ class IntentionRevision {
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
-                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                    console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
                 // Remove from the queue
@@ -332,15 +322,15 @@ class Intention {
             if ( planClass.isApplicableTo( ...this.predicate ) ) {
                 // plan is instantiated
                 this.#current_plan = new planClass(this.#parent);
-                // this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
+                this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
                 // and plan is executed and result returned
                 try {
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
-                    // this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
+                    this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
                     return plan_res
                 // or errors are caught so to continue with next plan
                 } catch (error) {
-                    // this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', error );
+                    this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', error );
                 }
             }
 
@@ -422,7 +412,7 @@ class GoPickUp extends Plan {
 
 class GoDeliver extends Plan {
 
-    static isApplicableTo ( go_deliver, x, y, id ) {
+    static isApplicableTo ( go_deliver, x, y ) {
         return go_deliver == 'go_deliver';
     }
 
