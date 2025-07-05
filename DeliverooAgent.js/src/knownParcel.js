@@ -5,9 +5,11 @@ const client = new DeliverooApi(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRjN2Q0MiIsIm5hbWUiOiJNb3J0ZVoiLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTU0NDM1NX0.F8r_xQkLdeBzklf5zTUbw_L_k5ZW1zWQv5JNCw2f-hw'
 );
 
-const beliefset = new Map();
+const beliefset = new Map();    // id -> {name, x, y, score}
 const knownParcels = new Map();    // id -> {x, y, reward, lastUpdate}
 const carryingParcels = new Map(); // id -> {reward, lastUpdate}
+const deliveryPoints = new Map(); // id -> { x, y }
+
 
 let DECAY_INTERVAL = 0;
 let OBS_RANGE = 0;
@@ -48,8 +50,21 @@ client.onConfig(config => {
     // console.log('observation range:', OBS_RANGE, 'tiles');
 });
 
-client.onMap((x, y, tiles) => {
-    console.log('Map:', x, y, tiles);
+// when map is received, update the delivery points
+client.onMap((width, height, tiles) => {
+    console.log('Map received:', width, height);
+
+    deliveryPoints.clear(); // Clear previous entries
+    let tileid = 1;
+    for (let tile of tiles) {
+        // actually, tile.type is a number, but for some reason it is a string in the client file
+        if (tile.type === 2) {
+            deliveryPoints.set(tileid, { x: tile.x, y: tile.y });
+            tileid++;
+        }
+    }
+
+    printDeliveryPoints();
 });
 
 client.onYou(_me => {
@@ -89,9 +104,7 @@ client.onParcelsSensing(parcels => {
 
     // Rebuild carryingParcels from scratch every time
     
-    console.log('Before clear, carryingParcels size:', carryingParcels.size);
     carryingParcels.clear();
-    console.log('After clear, carryingParcels size:', carryingParcels.size);
 
     // Remove parcels that should be visible but aren't
     for (let [id, parcel] of knownParcels) {
@@ -131,7 +144,7 @@ client.onParcelsSensing(parcels => {
         }
     }
 
-    printParcels();
+    // printParcels();
 });
 
 // Handle parcel decay
@@ -164,7 +177,7 @@ setInterval(() => {
 
     decayParcels(knownParcels, now, DECAY_INTERVAL);
 
-    printParcels();
+    // printParcels();
 }, 1000);
 
 
@@ -184,4 +197,11 @@ function printParcels() {
     console.log('Carrying Parcels:', carryingList);
 }
 
+// Print the current state of delivery points
+function printDeliveryPoints() {
+    const list = Array.from(deliveryPoints.entries())
+        .map(([id, { x, y }]) => `${id}: (${x},${y})    `)
+        .join(' ');
+    console.log('Delivery Points:', list);
+}
 
