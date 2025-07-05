@@ -17,3 +17,5 @@ function decayParcels(parcelMap, now, decayInterval) {
         }
     }
 }
+
+export {decayParcels as decayParcels}
