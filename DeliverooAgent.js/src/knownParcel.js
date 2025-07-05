@@ -58,7 +58,7 @@ client.onMap((width, height, tiles) => {
     let tileid = 1;
     for (let tile of tiles) {
         // actually, tile.type is a number, but for some reason it is a string in the client file
-        if (tile.type === 2) {
+        if (parseInt(tile.type) === 2) {
             deliveryPoints.set(tileid, { x: tile.x, y: tile.y });
             tileid++;
         }
