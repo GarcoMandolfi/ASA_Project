@@ -174,8 +174,8 @@ client.onYou(_me => {
     console.log('You:', _me);
     me = _me;  // now me.id is your agent id
     
-    // Find best delivery point from current position
-    if (global.graph) {
+    // Only compute pathfinding when agent is at integer coordinates (not moving)
+    if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
         findBestDeliveryPoint(me.x, me.y);
     }
 });
