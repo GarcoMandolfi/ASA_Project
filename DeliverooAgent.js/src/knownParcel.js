@@ -453,7 +453,43 @@ client.onYou(_me => {
 
 
 
-// Function to automatically navigate to best delivery point
+// Function to check if a path is still valid (all nodes exist in graph)
+function isPathValid(path) {
+    if (!path || path.length === 0) return false;
+    
+    for (let nodeId of path) {
+        if (!global.graph.has(nodeId)) {
+            console.log(`❌ Path invalid: node ${nodeId} not found in graph`);
+            return false;
+        }
+    }
+    return true;
+}
+
+// Function to recalculate best delivery path (for future use)
+function recalculateBestDeliveryPath() {
+    console.log('🔄 Recalculating best delivery path...');
+    
+    if (!global.graph) {
+        console.log('Graph not ready yet. Please wait for map to load.');
+        return null;
+    }
+    
+    const bestDelivery = findBestDeliveryPoint(me.x, me.y);
+    
+    if (!bestDelivery) {
+        console.log('No reachable delivery points found.');
+        return null;
+    }
+    
+    console.log(`New best delivery point: (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
+    console.log(`New distance: ${bestDelivery.distance} steps`);
+    console.log(`New path: ${bestDelivery.path.join(' -> ')}`);
+    
+    return bestDelivery;
+}
+
+// Function to automatically navigate to best delivery point with path validation
 async function goToBestDeliveryPoint() {
     console.log('Starting navigation to best delivery point...');
     
@@ -462,7 +498,7 @@ async function goToBestDeliveryPoint() {
         return;
     }
     
-    const bestDelivery = findBestDeliveryPoint(me.x, me.y);
+    let bestDelivery = findBestDeliveryPoint(me.x, me.y);
     
     if (!bestDelivery) {
         console.log('No reachable delivery points found.');
@@ -474,6 +510,21 @@ async function goToBestDeliveryPoint() {
     
     // Follow the complete path step by step
     for (let i = 1; i < bestDelivery.path.length; i++) {
+        // Check if current path is still valid before each move
+        if (!isPathValid(bestDelivery.path)) {
+            console.log('⚠️ Path blocked! Recalculating best path...');
+            bestDelivery = recalculateBestDeliveryPath();
+            
+            if (!bestDelivery) {
+                console.log('❌ No valid path found after recalculation. Stopping navigation.');
+                return;
+            }
+            
+            // Restart from current position with new path
+            i = 0; // Start from beginning of new path
+            continue;
+        }
+        
         const currentStep = bestDelivery.path[i];
         const [targetX, targetY] = currentStep.split(',').map(Number);
         
