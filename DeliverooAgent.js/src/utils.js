@@ -18,4 +18,18 @@ function decayParcels(parcelMap, now, decayInterval) {
     }
 }
 
+function getPredicateKey(predicate) {
+    const [type, ...args] = predicate;
+
+    switch (type) {
+        case 'go_pick_up':
+            return 'go_pick_up ' + args[2];
+        case 'go_deliver':
+            return 'go deliver ' + args[0] + ' ' + args[1]; // type:id
+        default:
+            return predicate.join(' '); // fallback to full string match
+    }
+}
+
 export {decayParcels as decayParcels}
+export {getPredicateKey as getKey}

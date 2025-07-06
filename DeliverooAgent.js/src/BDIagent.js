@@ -14,6 +14,9 @@ function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
 
 let DECAY_INTERVAL = 0;
 let OBS_RANGE = 0;
+let MOVE_DURATION = 0;
+let MOVE_STEPS = 0;
+let MAX_PARCELS = 0;
 
 client.onConfig(config => {
 
@@ -25,6 +28,10 @@ client.onConfig(config => {
         DECAY_INTERVAL = Infinity;
 
     OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
+
+    MOVE_DURATION = Number(config.MOVEMENT_DURATION);
+    MOVE_STEPS = Number(config.MOVEMENT_STEPS);
+    MAX_PARCELS = Number(config.PARCELS_MAX);
 });
 
 setInterval(() => {
@@ -60,7 +67,7 @@ client.onYou( ( {id, name, x, y, score} ) => {
 const deliveryCells = new Map();
 client.onMap((width, height, tiles) => {
     for (const tile of tiles) {
-        if (parseInt(tile.type) === 2) {
+        if (tile.type === 2) {
             deliveryCells.set(tile.x * 1000 + tile.y, tile);
         }
     }
@@ -124,7 +131,18 @@ function printParcels() {
     console.log('Carrying Parcels:', carryingList);
 }
 
+/**
+ * @type { Map< string, {id: string, x:number, y:number} > }
+ */
+const agents = new Map();
 
+client.onAgentsSensing ( aa => {
+
+    for (const a of aa) {
+        agents.set(a.id, a);
+    }
+
+})
 
 
 function generateOptions () {
@@ -135,7 +153,7 @@ function generateOptions () {
     let best_distance = Number.MAX_VALUE;
 
     // Check delivery option if carrying valuable parcels
-    if (carriedTotal >= 60) {
+    if (carriedTotal != 0) {
         for (const cell of deliveryCells.values()) {
             const d = distance(me, {x: cell.x, y: cell.y});
             if (d < best_distance) {
@@ -151,7 +169,7 @@ function generateOptions () {
             const d = distance(me, {x: parcel.x, y: parcel.y});
             if (d < best_distance) {
                 best_distance = d;
-                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id];
+                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, parcel.reward, parcel.lastSeen];
             }
         }
     }
@@ -168,6 +186,50 @@ function generateOptions () {
 client.onParcelsSensing( generateOptions )
 client.onAgentsSensing( generateOptions )
 client.onYou( generateOptions )
+
+function getScore ( predicate ) {
+
+    const type = predicate[0];
+
+    if (type == 'go_deliver') {
+
+        const x = predicate[1];
+        const y = predicate[2];
+        let deliveryDistance = distance ({x, y}, me);
+        let deliveryReward = carriedValue (carriedParcels);
+
+        const decayInterval = !isFinite(DECAY_INTERVAL) ? 20 : DECAY_INTERVAL;
+        const moveDuration = MOVE_DURATION || 200;
+        const steps = deliveryDistance / (MOVE_STEPS || 1);
+        const deliveryTime = steps * moveDuration;
+        const expectedDecay = deliveryTime / decayInterval;
+
+        let score = deliveryReward - deliveryDistance * 2 - expectedDecay;
+
+        const pressure = carriedParcels.size / MAX_PARCELS;
+        score += pressure * 10;
+
+        return score;
+    }
+
+    if (type == 'go_pick_up') {
+        
+        const x = predicate[1];
+        const y = predicate[2];
+
+        const d = distance({x, y}, me);
+        const timeSinceSeen = Date.now() - predicate[5];
+        const decaySteps = Math.floor(timeSinceSeen / DECAY_INTERVAL);
+        const rewardEstimate = predicate[4] - decaySteps;
+
+        const normalizedReward = Math.max(rewardEstimate, 0);
+        const score = normalizedReward / (d + 1); // +1 to avoid division by zero
+
+        return score;
+    }
+
+    return 0;
+}
 
 /**
  * Intention revision loop
@@ -222,23 +284,38 @@ class IntentionRevision {
 
 class IntentionRevisionReplace extends IntentionRevision {
 
-    async push ( predicate ) {
+    async push(predicate) {
 
+        // Find existing index with same id (only for go_pick_up)
         // Check if already queued
         const last = this.intention_queue.at( this.intention_queue.length - 1 );
-        if ( last && last.predicate.join(' ') == predicate.join(' ') ) {
+        
+        if ( last && last.predicate.slice(0, 3).join(' ') == predicate.slice(0, 3).join(' ') ) {
             return; // intention is already being achieved
         }
+
+        // Check if there is already an intention with the same first 4 elements
+        if (this.intention_queue.some(i =>
+            i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ')
+        )) {
+            return;
+        }
         
-        // console.log( 'IntentionRevisionReplace.push', predicate );
+        console.log( 'IntentionRevisionReplace.push', predicate );
         const intention = new Intention( this, predicate );
         this.intention_queue.push( intention );
-        
-        // Force current intention stop 
-        if ( last ) {
+
+        // Sort by score descending
+        this.intention_queue.sort((a, b) => {
+            return getScore(b.predicate) - getScore(a.predicate);
+        });
+
+        // Stop current if not at top
+        if (last) {
             last.stop();
         }
     }
+
 
 }
 
