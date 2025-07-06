@@ -2,7 +2,7 @@ import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 
 const client = new DeliverooApi(
     'http://localhost:8080/',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRjN2Q0MiIsIm5hbWUiOiJNb3J0ZVoiLCJyb2xlIjoidXNlciIsImlhdCI6MTc1MTU0NDM1NX0.F8r_xQkLdeBzklf5zTUbw_L_k5ZW1zWQv5JNCw2f-hw'
 );
 
 const beliefset = new Map();    // id -> {name, x, y, score}
@@ -974,4 +974,3 @@ function findBestDeliveryPoint(currentX, currentY) {
         return null;
     }
 }
-
