@@ -9,10 +9,12 @@ const beliefset = new Map();    // id -> {name, x, y, score}
 const knownParcels = new Map();    // id -> {x, y, reward, lastUpdate}
 const carryingParcels = new Map(); // id -> {reward, lastUpdate}
 const deliveryPoints = new Map(); // id -> { x, y }
+const otherAgents = new Map(); // id -> {x, y, lastUpdate, isMoving, direction, occupiedCells}
 
 
 let DECAY_INTERVAL = 0;
 let OBS_RANGE = 0;
+let AGENT_OBS_RANGE = 0;
 let CLOCK = 0;
 let MOVEMENT_DURATION = 0;
 let me = { id: null, x: 0, y: 0 }; // store agent id too
@@ -47,13 +49,15 @@ client.onConfig(config => {
 
     DECAY_INTERVAL = parseDurationToMilliseconds(config.PARCEL_DECADING_INTERVAL);
     OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
+    AGENT_OBS_RANGE = Number(config.AGENTS_OBSERVATION_DISTANCE);
     CLOCK = Number(config.CLOCK);
     MOVEMENT_DURATION = Number(config.MOVEMENT_DURATION);
 
     console.log('Clock:', CLOCK, 'ms');
     console.log('Movement duration:', MOVEMENT_DURATION, 'ms');
     console.log('Decay interval:', DECAY_INTERVAL, 'ms');
-    console.log('Observation range:', OBS_RANGE, 'tiles');
+    console.log('Parcel observation range:', OBS_RANGE, 'tiles');
+    console.log('Agent observation range:', AGENT_OBS_RANGE, 'tiles');
 });
 
 // Helper function to create 2D tile array from flat tiles array
@@ -167,6 +171,246 @@ function printGraphStatistics(graph) {
     console.log(`Total edges: ${totalEdges / 2}`); // Divide by 2 since each edge is counted twice
 }
 
+// Helper function to determine agent's occupied cells based on position
+function getAgentOccupiedCells(x, y) {
+    const isMovingX = !Number.isInteger(x);
+    const isMovingY = !Number.isInteger(y);
+    
+    if (!isMovingX && !isMovingY) {
+        // Agent is stationary, only occupies one cell
+        return [`${Math.floor(x)},${Math.floor(y)}`];
+    }
+    
+    const occupiedCells = [];
+    
+    if (isMovingX) {
+        // Agent is moving horizontally
+        const floorX = Math.floor(x);
+        const ceilX = Math.ceil(x);
+        const targetX = (x - floorX) < 0.5 ? floorX : ceilX;
+        
+        // Agent occupies both the cell it's leaving and the cell it's entering
+        occupiedCells.push(`${floorX},${Math.floor(y)}`);
+        occupiedCells.push(`${ceilX},${Math.floor(y)}`);
+    }
+    
+    if (isMovingY) {
+        // Agent is moving vertically
+        const floorY = Math.floor(y);
+        const ceilY = Math.ceil(y);
+        const targetY = (y - floorY) < 0.5 ? floorY : ceilY;
+        
+        // Agent occupies both the cell it's leaving and the cell it's entering
+        occupiedCells.push(`${Math.floor(x)},${floorY}`);
+        occupiedCells.push(`${Math.floor(x)},${ceilY}`);
+    }
+    
+    // Remove duplicates
+    return [...new Set(occupiedCells)];
+}
+
+// Helper function to determine agent's movement direction
+function getAgentDirection(x, y) {
+    const isMovingX = !Number.isInteger(x);
+    const isMovingY = !Number.isInteger(y);
+    
+    if (!isMovingX && !isMovingY) {
+        return 'stationary';
+    }
+    
+    if (isMovingX) {
+        const floorX = Math.floor(x);
+        const ceilX = Math.ceil(x);
+        return (x - floorX) < 0.5 ? 'left' : 'right';
+    }
+    
+    if (isMovingY) {
+        const floorY = Math.floor(y);
+        const ceilY = Math.ceil(y);
+        return (y - floorY) < 0.5 ? 'down' : 'up';
+    }
+    
+    return 'unknown';
+}
+
+// Helper function to temporarily block agent positions in the graph
+function blockAgentPositions(agentId, occupiedCells) {
+    if (!global.graph) return;
+    
+    console.log(`Blocking positions for agent ${agentId}: ${occupiedCells.join(', ')}`);
+    
+    // Remove edges to/from occupied cells
+    for (let cell of occupiedCells) {
+        if (global.graph.has(cell)) {
+            // Remove all edges to this cell
+            for (let [nodeId, neighbors] of global.graph) {
+                neighbors.delete(cell);
+            }
+            // Remove this cell's edges
+            global.graph.delete(cell);
+        }
+    }
+}
+
+// Helper function to unblock agent positions in the graph
+function unblockAgentPositions(agentId, occupiedCells) {
+    if (!global.graph || !global.nodePositions) return;
+    
+    console.log(`Unblocking positions for agent ${agentId}: ${occupiedCells.join(', ')}`);
+    
+    // For each occupied cell, restore it to the graph
+    for (let cell of occupiedCells) {
+        const [x, y] = cell.split(',').map(Number);
+        
+        // Check if this cell should be a valid node (not a wall)
+        const tile = global.tiles2D[x][y];
+        if (tile && tile.type !== 0) {
+            // Add the cell back to the graph
+            global.graph.set(cell, new Set());
+            
+            // Add edges to adjacent cells that are also unblocked
+            const directions = [
+                { dx: -1, dy: 0 }, // left
+                { dx: 1, dy: 0 },  // right
+                { dx: 0, dy: -1 }, // up
+                { dx: 0, dy: 1 }   // down
+            ];
+            
+            for (let dir of directions) {
+                const nx = x + dir.dx;
+                const ny = y + dir.dy;
+                
+                // Check bounds
+                if (nx >= 0 && nx < global.mapWidth && ny >= 0 && ny < global.mapHeight) {
+                    const neighborTile = global.tiles2D[nx][ny];
+                    if (neighborTile && neighborTile.type !== 0) {
+                        const neighborId = `${nx},${ny}`;
+                        
+                        // Only add edge if neighbor exists in graph (not blocked)
+                        if (global.graph.has(neighborId)) {
+                            global.graph.get(cell).add(neighborId);
+                            global.graph.get(neighborId).add(cell);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper function to check if an agent is within observation range
+function isAgentInRange(agentX, agentY, myX, myY) {
+    const dx = Math.abs(agentX - myX);
+    const dy = Math.abs(agentY - myY);
+    const distance = dx + dy; // Manhattan distance
+    
+    return distance < AGENT_OBS_RANGE;
+}
+
+// Helper function to check if a position is empty (no agents at that position)
+function isPositionEmpty(x, y, visibleAgents) {
+    console.log(`    Checking if position (${x}, ${y}) is empty:`);
+    for (let agent of visibleAgents) {
+        console.log(`      Agent ${agent.id}: (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)})`);
+        if (agent.x === x && agent.y === y) {
+            console.log(`      -> Position NOT empty (agent ${agent.id} is here)`);
+            return false; // There's an agent at this position
+        }
+    }
+    console.log(`      -> Position IS empty`);
+    return true; // No agents at this position
+}
+
+// Helper function to print agent list
+function printAgents() {
+    const agentList = Array.from(otherAgents.entries())
+        .map(([id, { x, y, lastUpdate, isMoving, direction, status }]) => {
+            if (status === 'unknown') {
+                return `${id}: [UNKNOWN POSITION] [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
+            } else if (status === 'out_of_range') {
+                return `${id}: [OUT OF RANGE] (${x.toFixed(2)}, ${y.toFixed(2)}) [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
+            } else {
+                return `${id}: (${x.toFixed(2)}, ${y.toFixed(2)}) [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
+            }
+        })
+        .join('\n  ');
+    
+    console.log('\n📋 Other Agents:');
+    if (agentList) {
+        console.log(`  ${agentList}`);
+    } else {
+        console.log('  No agents tracked');
+    }
+    console.log(`Total agents: ${otherAgents.size}`);
+}
+
+// Debug function to check what's at a specific position
+function debugPosition(x, y, agents) {
+    console.log(`\n🔍 Debug position (${x}, ${y}):`);
+    console.log(`My position: (${me.x.toFixed(2)}, ${me.y.toFixed(2)})`);
+    console.log(`Distance to position: ${Math.abs(x - me.x) + Math.abs(y - me.y)}`);
+    console.log(`In observation range: ${isAgentInRange(x, y, me.x, me.y)}`);
+    console.log(`Position empty: ${isPositionEmpty(x, y, agents)}`);
+    console.log(`Visible agents at this position:`);
+    for (let agent of agents) {
+        if (agent.x === x && agent.y === y) {
+            console.log(`  - ${agent.id}: (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)})`);
+        }
+    }
+}
+
+// Function to check agent visibility and update their status
+function checkAgentVisibility() {
+    // Get all currently visible agents from beliefset
+    const visibleAgents = Array.from(beliefset.values()).filter(agent => agent.id !== me.id);
+    const visibleAgentIds = new Set(visibleAgents.map(agent => agent.id));
+    
+    console.log(`\n👁️ Checking agent visibility:`);
+    console.log(`My position: (${me.x.toFixed(2)}, ${me.y.toFixed(2)})`);
+    console.log(`Agent observation range: ${AGENT_OBS_RANGE}`);
+    console.log(`Visible agents: ${visibleAgents.length}`);
+    console.log(`Tracked agents: ${otherAgents.size}`);
+    
+    // Check each tracked agent
+    for (let [agentId, agent] of otherAgents) {
+        const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
+        const canSeeAgent = distance < AGENT_OBS_RANGE;
+        const agentIsVisible = visibleAgentIds.has(agentId);
+        
+        console.log(`Agent ${agentId}: pos(${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) distance:${distance} canSee:${canSeeAgent} isVisible:${agentIsVisible}`);
+        
+        if (canSeeAgent) {
+            if (agentIsVisible) {
+                // Agent is visible - update last seen
+                console.log(`✅ Agent ${agentId} is visible - updating last seen`);
+                agent.lastUpdate = Date.now();
+                agent.status = 'visible';
+                otherAgents.set(agentId, agent);
+            } else {
+                // Can see the position but agent is not there - position is empty
+                console.log(`❌ Agent ${agentId} position (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) is empty - updating to unknown`);
+                agent.status = 'unknown';
+                agent.lastUpdate = Date.now();
+                otherAgents.set(agentId, agent);
+                
+                // Unblock the position since it's empty
+                if (agent.occupiedCells) {
+                    unblockAgentPositions(agentId, agent.occupiedCells);
+                }
+            }
+        } else {
+            // Can't see the agent's position - mark as out of range but keep position
+            if (agent.status === 'visible') {
+                console.log(`🌫️ Agent ${agentId} out of range - keeping last known position`);
+                agent.status = 'out_of_range';
+                agent.lastUpdate = Date.now();
+                otherAgents.set(agentId, agent);
+                // Don't unblock position - we're keeping it as potentially occupied
+            }
+        }
+    }
+}
+
 // when map is received, update the delivery points
 client.onMap((width, height, tiles) => {
     console.log('Map received:', width, height);
@@ -185,9 +429,12 @@ client.onMap((width, height, tiles) => {
     // Print graph statistics
     printGraphStatistics(graph);
     
-    // Store the graph globally for on-demand pathfinding
+    // Store the graph and map data globally for on-demand pathfinding and graph recreation
     global.graph = graph;
     global.nodePositions = nodePositions;
+    global.mapWidth = width;
+    global.mapHeight = height;
+    global.tiles2D = tiles2D;
     
     console.log(`Graph created with ${graph.size} nodes. Ready for pathfinding.`);
 
@@ -288,14 +535,99 @@ console.log('\n🚀 Agent ready! Type "go" to navigate to best delivery point.')
 console.log('Type "help" for available commands.');
 
 client.onAgentsSensing(agents => {
+    const seenAgentIds = new Set();
+    
     for (let a of agents) {
         beliefset.set(a.id, a);
-    }
+        seenAgentIds.add(a.id);
+        
+        // Skip our own agent
+        if (a.id === me.id) continue;
+        
 
-    let agentList = Array.from(beliefset.values())
-        .map(({ name, x, y, score }) => `${name}(${score}):${x},${y}`)
-        .join(' ');
-    // console.log('Agents:', agentList);
+        
+        const isMoving = !Number.isInteger(a.x) || !Number.isInteger(a.y);
+        const direction = getAgentDirection(a.x, a.y);
+        const occupiedCells = getAgentOccupiedCells(a.x, a.y);
+        
+        // Check if this is a new agent or if position has changed
+        const existingAgent = otherAgents.get(a.id);
+        const positionChanged = !existingAgent || 
+                              existingAgent.x !== a.x || 
+                              existingAgent.y !== a.y;
+        
+        if (existingAgent && positionChanged) {
+            // Agent moved to a different position - unblock previous positions
+            console.log(`Agent ${a.id} moved from (${existingAgent.x.toFixed(2)}, ${existingAgent.y.toFixed(2)}) to (${a.x.toFixed(2)}, ${a.y.toFixed(2)})`);
+            if (existingAgent.occupiedCells) {
+                unblockAgentPositions(a.id, existingAgent.occupiedCells);
+            }
+        }
+        
+        // Update or add agent information
+        otherAgents.set(a.id, {
+            x: a.x,
+            y: a.y,
+            lastUpdate: Date.now(),
+            isMoving: isMoving,
+            direction: direction,
+            occupiedCells: occupiedCells,
+            status: 'visible' // Mark as currently visible
+        });
+        
+        // Block new positions only if agent is visible
+        if (isAgentInRange(a.x, a.y, me.x, me.y)) {
+            blockAgentPositions(a.id, occupiedCells);
+        }
+        
+        if (!existingAgent) {
+            console.log(`New agent detected: ${a.id} at (${a.x.toFixed(2)}, ${a.y.toFixed(2)}) [${direction}]`);
+        } else if (positionChanged) {
+            console.log(`Agent ${a.id} position updated: (${a.x.toFixed(2)}, ${a.y.toFixed(2)}) [${direction}]`);
+        }
+    }
+    
+    // Check all tracked agents for visibility
+    for (let [agentId, agent] of otherAgents) {
+        const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
+        const canSeeAgent = distance < AGENT_OBS_RANGE;
+        const agentIsVisible = seenAgentIds.has(agentId);
+        
+        console.log(`Agent ${agentId}: pos(${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) distance:${distance} canSee:${canSeeAgent} isVisible:${agentIsVisible}`);
+        
+        if (canSeeAgent) {
+            if (agentIsVisible) {
+                // Agent is visible - update last seen
+                console.log(`✅ Agent ${agentId} is visible - updating last seen`);
+                agent.lastUpdate = Date.now();
+                agent.status = 'visible';
+                otherAgents.set(agentId, agent);
+            } else {
+                // Can see the position but agent is not there - position is empty
+                console.log(`❌ Agent ${agentId} position (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) is empty - updating to unknown`);
+                agent.status = 'unknown';
+                agent.lastUpdate = Date.now();
+                otherAgents.set(agentId, agent);
+                
+                // Unblock the position since it's empty
+                if (agent.occupiedCells) {
+                    unblockAgentPositions(agentId, agent.occupiedCells);
+                }
+            }
+        } else {
+            // Can't see the agent's position - mark as out of range but keep position
+            if (agent.status === 'visible') {
+                console.log(`🌫️ Agent ${agentId} out of range - keeping last known position`);
+                agent.status = 'out_of_range';
+                agent.lastUpdate = Date.now();
+                otherAgents.set(agentId, agent);
+                // Don't unblock position - we're keeping it as potentially occupied
+            }
+        }
+    }
+    
+    // Print updated agent list
+    printAgents();
 });
 
 // Update the parcel in knownParcels
@@ -358,6 +690,8 @@ client.onParcelsSensing(parcels => {
             continue;
         }
     }
+
+
 
     // printParcels();
 });
