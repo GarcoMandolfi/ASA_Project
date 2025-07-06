@@ -56,13 +56,8 @@ client.onConfig(config => {
     console.log('Observation range:', OBS_RANGE, 'tiles');
 });
 
-// when map is received, update the delivery points
-client.onMap((width, height, tiles) => {
-    console.log('Map received:', width, height);
-
-    deliveryPoints.clear(); // Clear previous entries
-    
-    // Create 2D array of tiles
+// Helper function to create 2D tile array from flat tiles array
+function createTiles2D(width, height, tiles) {
     const tiles2D = [];
     for (let x = 0; x < width; x++) {
         tiles2D[x] = [];
@@ -82,7 +77,11 @@ client.onMap((width, height, tiles) => {
         }
     }
     
-    // Visualize the 2D map
+    return tiles2D;
+}
+
+// Helper function to visualize the map
+function visualizeMap(width, height, tiles2D) {
     console.log('\nMap Visualization (2D):');
     console.log('Legend: 0=empty, 1=wall, 2=delivery, 3=spawn');
     console.log('─'.repeat(width * 2 + 1)); // Top border
@@ -103,8 +102,10 @@ client.onMap((width, height, tiles) => {
         console.log(row);
     }
     console.log('─'.repeat(width * 2 + 1)); // Bottom border
+}
 
-    // Create graph from tiles
+// Helper function to create graph from tiles
+function createGraphFromTiles(width, height, tiles2D) {
     const graph = new Map(); // nodeId -> Set of neighbor nodeIds
     const nodePositions = new Map(); // nodeId -> {x, y, type}
     
@@ -152,7 +153,11 @@ client.onMap((width, height, tiles) => {
         }
     }
     
-    // Show graph statistics
+    return { graph, nodePositions };
+}
+
+// Helper function to print graph statistics
+function printGraphStatistics(graph) {
     console.log(`\nGraph Statistics:`);
     console.log(`Total nodes: ${graph.size}`);
     let totalEdges = 0;
@@ -160,7 +165,26 @@ client.onMap((width, height, tiles) => {
         totalEdges += neighbors.size;
     }
     console.log(`Total edges: ${totalEdges / 2}`); // Divide by 2 since each edge is counted twice
+}
 
+// when map is received, update the delivery points
+client.onMap((width, height, tiles) => {
+    console.log('Map received:', width, height);
+
+    deliveryPoints.clear(); // Clear previous entries
+    
+    // Create 2D tile array and extract delivery points
+    const tiles2D = createTiles2D(width, height, tiles);
+    
+    // Visualize the map
+    visualizeMap(width, height, tiles2D);
+    
+    // Create graph from tiles
+    const { graph, nodePositions } = createGraphFromTiles(width, height, tiles2D);
+    
+    // Print graph statistics
+    printGraphStatistics(graph);
+    
     // Store the graph globally for on-demand pathfinding
     global.graph = graph;
     global.nodePositions = nodePositions;
