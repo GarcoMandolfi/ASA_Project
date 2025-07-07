@@ -177,6 +177,9 @@ function generateOptions () {
     // Push the best option found
     if (best_option)
         myAgent.push(best_option);
+    else {
+        myAgent.push(['idle']);
+    }
 
 }
 
@@ -209,6 +212,8 @@ function getScore ( predicate ) {
         const pressure = carriedParcels.size / MAX_PARCELS;
         score += pressure * 10;
 
+        score = Math.min(score, 0);
+
         return score;
     }
 
@@ -223,12 +228,40 @@ function getScore ( predicate ) {
         const rewardEstimate = predicate[4] - decaySteps;
 
         const normalizedReward = Math.max(rewardEstimate, 0);
-        const score = normalizedReward / (d + 1); // +1 to avoid division by zero
+        const score = 2 * normalizedReward / (d + 1); // +1 to avoid division by zero
 
         return score;
     }
 
+    if (type == 'idle')
+        return -1;
+
     return 0;
+}
+
+function stillValid (predicate) {
+
+    const type = predicate[0];
+
+    switch (type) {
+        case 'go_pick_up':
+            let id = predicate[3];
+            let p = parcels.get(id);
+            if (p && p.carriedBy) return false;
+            return true;
+        case 'go_deliver':
+            if (carriedParcels.size == 0)
+                return false;
+            return true;
+        case 'idle':
+            // If not carrying any parcels and there are no free parcels, remain idle
+            if (carriedParcels.size === 0 && parcels.size == 0)
+                return true;
+            return false;
+        default:
+            return false;
+    }
+
 }
 
 /**
@@ -254,8 +287,9 @@ class IntentionRevision {
                 // TODO this hard-coded implementation is an example
                 let id = intention.predicate[2]
                 let p = parcels.get(id)
-                if ( p && p.carriedBy ) {
-                    console.log( 'Skipping intention because no more valid', intention.predicate )
+                if ( !stillValid(intention.predicate) ) {
+                    console.log( 'Skipping intention because no more valid', intention.predicate );
+                    this.intention_queue.shift();
                     continue;
                 }
 
@@ -561,7 +595,84 @@ class BlindMove extends Plan {
     }
 }
 
+function isFree(x, y) {
+    
+    for (const a of agents.values()) {
+        if (a.x == x && a.y == y) return false;
+    }
+
+    return true;
+}
+
+class IdleMove extends Plan {
+
+    static isApplicableTo ( idle ) {
+        return idle == 'idle';
+    }
+
+    static directions = ['up', 'right', 'down', 'left'];
+    static LastDir = Math.floor(Math.random() * IdleMove.directions.length);
+
+    async execute ( go_to ) {
+
+        // // Up: [0, 0.25] Down: [0.25, 0.5] Left:[0.5, 0.75] Right:[0.75, 1]
+        // let directions = ['up', 'right', 'down', 'left'];
+        // let LastDir = Math.floor(Math.random() * directions.length);
+
+        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+
+        let rand = Math.random();
+        let index;
+        let dir;
+        let moved;
+        if (rand < 0.65) {
+            index = IdleMove.LastDir;
+        } else if (rand < 0.8) {
+            index = (IdleMove.LastDir + 3) % 4;
+        } else if (rand < 0.95) {
+            index = (IdleMove.LastDir + 1) % 4;
+        } else {
+            index = (IdleMove.LastDir + 1) % 2;
+        }
+
+        dir = IdleMove.directions[index];
+
+        let x = me.x;
+        let y = me.y
+
+        switch(dir) {
+            case 'up':
+                if (isFree(x, y + 1))
+                    moved = await client.emitMove('up');
+                break;
+            case 'down':
+                if (isFree(x, y - 1))
+                    moved = await client.emitMove('down');
+                break;
+            case 'left':
+                if (isFree(x - 1, y))
+                    moved = await client.emitMove('left');
+                break;
+            case 'right':
+                if (isFree(x + 1, y))
+                    moved = await client.emitMove('right');
+        }
+
+        if (moved) {
+            IdleMove.LastDir = index;
+        }
+        else {
+            IdleMove.LastDir = (IdleMove.LastDir + 1) % 2;
+        }
+
+        return true;
+
+    }
+
+}
+
 // plan classes are added to plan library 
 planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
+planLibrary.push( IdleMove )
