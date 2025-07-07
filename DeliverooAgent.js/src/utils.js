@@ -1,4 +1,40 @@
-import { deliveryCells } from "./BDIagent.js";
+import { deliveryCells } from "./SingleAgent.js";
+
+
+// Parse duration strings like '1s', '2s', etc. to milliseconds
+// For now this is For Decay Interval only, but can be extended for other durations
+// 'infinite' is treated as Infinity
+
+function parseDecayInterval(str) {
+    if (typeof str !== 'string') {
+        throw new Error(`Invalid input: expected a string but got ${typeof str}`);
+    }
+
+    if (str === 'infinite') {
+        return Infinity;
+    }
+
+    if (str.endsWith('s')) {
+        const seconds = parseInt(str.slice(0, -1), 10);
+        if (isNaN(seconds)) {
+            throw new Error(`Invalid duration format: unable to parse seconds from "${str}"`);
+        }
+        return seconds * 1000;
+    }
+
+    throw new Error(`Invalid duration format: unsupported string "${str}"`);
+}
+
+export {parseDecayInterval as parseDecayInterval}
+
+//Simple Manhattan distance between two cells
+function manhattanDistance( {x:x1, y:y1}, {x:x2, y:y2}) {
+    const dx = Math.abs( Math.round(x1) - Math.round(x2) )
+    const dy = Math.abs( Math.round(y1) - Math.round(y2) )
+    return dx + dy;
+}
+
+export {manhattanDistance as manhattanDistance}
 
 // this function is used to decay the parcels
 // it is called every time the agent updates its state
@@ -37,6 +73,8 @@ function getPredicateKey(predicate) {
     }
 }
 
+export {createTiles2D as createTiles2D}
+
 
 // Helper function to create 2D tile array from flat tiles array
 function createTiles2D(width, height, tiles) {
@@ -53,10 +91,8 @@ function createTiles2D(width, height, tiles) {
         tiles2D[tile.x][tile.y] = tile;
         
         // Check for delivery points (type 2)
-        if (tile.type === 2) {
-            const id = `${tile.x},${tile.y}`;
-            deliveryCells.set(id, { x: tile.x, y: tile.y });
-        }
+        if (tile.type === 2)
+            deliveryCells.set("(" + tile.x + "," + tile.y + ")", tile);
     }
     
     return tiles2D;
@@ -115,6 +151,7 @@ function createGraphFromTiles(width, height, tiles2D) {
     return { graph, nodePositions };
 }
 
+export {createGraphFromTiles as createGraphFromTiles}
 
 // Helper function to determine agent's occupied cells based on position
 function getAgentOccupiedCells(agent) {
