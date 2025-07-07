@@ -1,6 +1,8 @@
 import { deliveryCells } from "./BDIagent.js";
 
-// Update the reward of each parcel according to the decay interval
+// this function is used to decay the parcels
+// it is called every time the agent updates its state
+// it is used to decay the parcels based on the decay interval
 function decayParcels(parcelMap, now, decayInterval) {
     for (let [id, parcel] of parcelMap) {
         const timePassed = now - parcel.lastUpdate;
@@ -21,6 +23,7 @@ function decayParcels(parcelMap, now, decayInterval) {
     }
 }
 
+// this function is used to get the key of the predicate
 function getPredicateKey(predicate) {
     const [type, ...args] = predicate;
 
