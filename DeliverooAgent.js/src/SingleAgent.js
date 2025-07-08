@@ -221,11 +221,17 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
-        if (!parcel.carriedBy) {
-            const d = utils.manhattanDistance(me, {x: parcel.x, y: parcel.y});
-            if (d < best_distance) {
-                best_distance = d;
-                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, parcel.reward, parcel.lastUpdate];
+        console.log('parcel', parcel);
+        if (
+            Number.isInteger(me.x) && Number.isInteger(me.y) &&
+            Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
+        ) {
+            console.log("getting shortest path",parcel.id);
+            const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
+            console.log('pickupPath', pickupPath);
+            if (pickupPath && pickupPath.cost < best_distance) {
+                best_distance = pickupPath.cost;
+                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, parcel.reward, parcel.lastUpdate, pickupPath.path];
             }
         }
     }
@@ -472,13 +478,13 @@ class Plan {
 
 class GoPickUp extends Plan {
 
-    static isApplicableTo ( go_pick_up, x, y, id ) {
+    static isApplicableTo ( go_pick_up, x, y, id, reward, lastUpdate, path ) {
         return go_pick_up == 'go_pick_up';
     }
 
-    async execute ( go_pick_up, x, y ) {
+    async execute ( go_pick_up, x, y, id, reward, lastUpdate, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        await this.subIntention( ['go_to', x, y] );
+        await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.emitPickup()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
