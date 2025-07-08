@@ -1,4 +1,4 @@
-import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config} from "./SingleAgent.js";
+import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells} from "./SingleAgent.js";
 
 
 
@@ -96,6 +96,8 @@ function createTiles2D(width, height, tiles) {
         // Check for delivery points (type 2)
         if (tile.type === 2)
             deliveryCells.set("(" + tile.x + "," + tile.y + ")", tile);
+        else if (tile.type === 3)
+            generatingCells.set("(" + tile.x + "," + tile.y + ")", tile);
     }
     
     return tiles2D;

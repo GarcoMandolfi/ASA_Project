@@ -56,7 +56,12 @@ const otherAgents = new Map();
  */
 const deliveryCells = new Map();
 
-export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config}
+/**
+ * @type { Map< string, {x:number, y:number, type:Number} > }
+ */
+const generatingCells = new Map();
+
+export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells}
 
 client.onMap((width, height, tiles) => {
     deliveryCells.clear();
