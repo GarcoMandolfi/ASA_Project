@@ -39,7 +39,7 @@ setInterval(() => {
 
     const carriedTotal = carriedValue(carriedParcels);
 
-    decayParcels(parcels, Date.now(), DECAY_INTERVAL);  // Use correct map
+    decayParcels();  // Use correct map
 
     printParcels();
 

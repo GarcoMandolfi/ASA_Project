@@ -1,87 +1,87 @@
-import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { decayParcels } from "./utils.js"
+// import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
+// import { decayParcels } from "./utils.js"
 
-const client = new DeliverooApi(
-    'http://localhost:8080',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
-)
+// const client = new DeliverooApi(
+//     'http://localhost:8080',
+//     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
+// )
 
-function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
-    const dx = Math.abs( Math.round(x1) - Math.round(x2) )
-    const dy = Math.abs( Math.round(y1) - Math.round(y2) )
-    return dx + dy;
-}
+// function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
+//     const dx = Math.abs( Math.round(x1) - Math.round(x2) )
+//     const dy = Math.abs( Math.round(y1) - Math.round(y2) )
+//     return dx + dy;
+// }
 
-let DECAY_INTERVAL = 0;
-let OBS_RANGE = 0;
-let MOVE_DURATION = 0;
-let MOVE_STEPS = 0;
-let MAX_PARCELS = 0;
+// let DECAY_INTERVAL = 0;
+// let OBS_RANGE = 0;
+// let MOVE_DURATION = 0;
+// let MOVE_STEPS = 0;
+// let MAX_PARCELS = 0;
 
-client.onConfig(config => {
+// client.onConfig(config => {
 
-    let decayInterval = config.PARCEL_DECADING_INTERVAL
+//     let decayInterval = config.PARCEL_DECADING_INTERVAL
 
-    if (typeof decayInterval === 'string' && decayInterval.endsWith('s'))
-        DECAY_INTERVAL = parseInt(decayInterval.slice(0, -1), 10) * 1000;
-    else
-        DECAY_INTERVAL = Infinity;
+//     if (typeof decayInterval === 'string' && decayInterval.endsWith('s'))
+//         DECAY_INTERVAL = parseInt(decayInterval.slice(0, -1), 10) * 1000;
+//     else
+//         DECAY_INTERVAL = Infinity;
 
-    OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
+//     OBS_RANGE = Number(config.PARCELS_OBSERVATION_DISTANCE);
 
-    MOVE_DURATION = Number(config.MOVEMENT_DURATION);
-    MOVE_STEPS = Number(config.MOVEMENT_STEPS);
-    MAX_PARCELS = Number(config.PARCELS_MAX);
-});
+//     MOVE_DURATION = Number(config.MOVEMENT_DURATION);
+//     MOVE_STEPS = Number(config.MOVEMENT_STEPS);
+//     MAX_PARCELS = Number(config.PARCELS_MAX);
+// });
 
-setInterval(() => {
-    if (!isFinite(DECAY_INTERVAL)) return;
+// setInterval(() => {
+//     if (!isFinite(DECAY_INTERVAL)) return;
 
-    const carriedTotal = carriedValue(carriedParcels);
+//     const carriedTotal = carriedValue(carriedParcels);
 
-    decayParcels(parcels, Date.now(), DECAY_INTERVAL);  // Use correct map
+//     decayParcels(parcels, Date.now(), DECAY_INTERVAL);  // Use correct map
 
-    printParcels();
+//     printParcels();
 
-    console.log("Total carried reward: "+ carriedTotal);
-}, 1000);
+//     console.log("Total carried reward: "+ carriedTotal);
+// }, 1000);
 
 
 /**
  * Belief revision
  */
 
-/**
- * @type { {id:string, name:string, x:number, y:number, score:number} }
- */
-const me = {id: null, name: null, x: null, y: null, score: null};
+// /**
+//  * @type { {id:string, name:string, x:number, y:number, score:number} }
+//  */
+// const me = {id: null, name: null, x: null, y: null, score: null};
 
-client.onYou( ( {id, name, x, y, score} ) => {
-    me.id = id
-    me.name = name
-    me.x = x
-    me.y = y
-    me.score = score
-} )
+// client.onYou( ( {id, name, x, y, score} ) => {
+//     me.id = id
+//     me.name = name
+//     me.x = x
+//     me.y = y
+//     me.score = score
+// } )
 
-const deliveryCells = new Map();
-client.onMap((width, height, tiles) => {
-    for (const tile of tiles) {
-        if (tile.type === 2) {
-            deliveryCells.set(tile.x * 1000 + tile.y, tile);
-        }
-    }
-})
+// const deliveryCells = new Map();
+// client.onMap((width, height, tiles) => {
+//     for (const tile of tiles) {
+//         if (tile.type === 2) {
+//             deliveryCells.set(tile.x * 1000 + tile.y, tile);
+//         }
+//     }
+// })
 
-/**
- * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastSeen:number} > }
- */
-const parcels = new Map();
+// /**
+//  * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastSeen:number} > }
+//  */
+// const parcels = new Map();
 
-/**
- * @type { Map< string, {id: string, reward:number, lastSeen:number} > }
- */
-const carriedParcels = new Map();
+// /**
+//  * @type { Map< string, {id: string, reward:number, lastSeen:number} > }
+//  */
+// const carriedParcels = new Map();
 
 function parcelUpdate(parcel) {
     if ( parcel.reward > 1 ) {
@@ -131,18 +131,18 @@ function printParcels() {
     console.log('Carrying Parcels:', carryingList);
 }
 
-/**
- * @type { Map< string, {id: string, x:number, y:number} > }
- */
-const agents = new Map();
+// /**
+//  * @type { Map< string, {id: string, x:number, y:number} > }
+//  */
+// const agents = new Map();
 
-client.onAgentsSensing ( aa => {
+// client.onAgentsSensing ( aa => {
 
-    for (const a of aa) {
-        agents.set(a.id, a);
-    }
+//     for (const a of aa) {
+//         agents.set(a.id, a);
+//     }
 
-})
+// })
 
 
 function generateOptions () {

@@ -6,10 +6,10 @@
 // );
 
 const beliefset = new Map();    // id -> {name, x, y, score}
-const knownParcels = new Map();    // id -> {x, y, reward, lastUpdate}
-const carryingParcels = new Map(); // id -> {reward, lastUpdate}
-const deliveryPoints = new Map(); // id -> { x, y }
-const otherAgents = new Map(); // id -> {x, y, lastUpdate, isMoving, direction, occupiedCells}
+// const knownParcels = new Map();    // id -> {x, y, reward, lastUpdate}
+// const carryingParcels = new Map(); // id -> {reward, lastUpdate}
+// const deliveryPoints = new Map(); // id -> { x, y }
+// const otherAgents = new Map(); // id -> {x, y, lastUpdate, isMoving, direction, occupiedCells}
 
 
 // let DECAY_INTERVAL = 0;
@@ -322,172 +322,172 @@ const otherAgents = new Map(); // id -> {x, y, lastUpdate, isMoving, direction, 
 // }
 
 // Helper function to print agent list
-function printAgents() {
-    const agentList = Array.from(otherAgents.entries())
-        .map(([id, { x, y, lastUpdate, isMoving, direction, status }]) => {
-            if (status === 'unknown') {
-                return `${id}: [UNKNOWN POSITION] [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
-            } else if (status === 'out_of_range') {
-                return `${id}: [OUT OF RANGE] (${x.toFixed(2)}, ${y.toFixed(2)}) [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
-            } else {
-                return `${id}: (${x.toFixed(2)}, ${y.toFixed(2)}) [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
-            }
-        })
-        .join('\n  ');
+// function printAgents() {
+//     const agentList = Array.from(otherAgents.entries())
+//         .map(([id, { x, y, lastUpdate, isMoving, direction, status }]) => {
+//             if (status === 'unknown') {
+//                 return `${id}: [UNKNOWN POSITION] [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
+//             } else if (status === 'out_of_range') {
+//                 return `${id}: [OUT OF RANGE] (${x.toFixed(2)}, ${y.toFixed(2)}) [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
+//             } else {
+//                 return `${id}: (${x.toFixed(2)}, ${y.toFixed(2)}) [${direction}] [${status}] - Last: ${new Date(lastUpdate).toLocaleTimeString()}`;
+//             }
+//         })
+//         .join('\n  ');
     
-    console.log('\n📋 Other Agents:');
-    if (agentList) {
-        console.log(`  ${agentList}`);
-    } else {
-        console.log('  No agents tracked');
-    }
-    console.log(`Total agents: ${otherAgents.size}`);
-}
+//     console.log('\n📋 Other Agents:');
+//     if (agentList) {
+//         console.log(`  ${agentList}`);
+//     } else {
+//         console.log('  No agents tracked');
+//     }
+//     console.log(`Total agents: ${otherAgents.size}`);
+// }
 
 // Debug function to check what's at a specific position
-function debugPosition(x, y, agents) {
-    console.log(`\n🔍 Debug position (${x}, ${y}):`);
-    console.log(`My position: (${me.x.toFixed(2)}, ${me.y.toFixed(2)})`);
-    console.log(`Distance to position: ${Math.abs(x - me.x) + Math.abs(y - me.y)}`);
-    console.log(`In observation range: ${isAgentInRange(x, y, me.x, me.y)}`);
-    console.log(`Position empty: ${isPositionEmpty(x, y, agents)}`);
-    console.log(`Visible agents at this position:`);
-    for (let agent of agents) {
-        if (agent.x === x && agent.y === y) {
-            console.log(`  - ${agent.id}: (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)})`);
-        }
-    }
-}
+// function debugPosition(x, y, agents) {
+//     console.log(`\n🔍 Debug position (${x}, ${y}):`);
+//     console.log(`My position: (${me.x.toFixed(2)}, ${me.y.toFixed(2)})`);
+//     console.log(`Distance to position: ${Math.abs(x - me.x) + Math.abs(y - me.y)}`);
+//     console.log(`In observation range: ${isAgentInRange(x, y, me.x, me.y)}`);
+//     console.log(`Position empty: ${isPositionEmpty(x, y, agents)}`);
+//     console.log(`Visible agents at this position:`);
+//     for (let agent of agents) {
+//         if (agent.x === x && agent.y === y) {
+//             console.log(`  - ${agent.id}: (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)})`);
+//         }
+//     }
+// }
 
 // Function to check agent visibility and update their status
-function checkAgentVisibility() {
-    // Get all currently visible agents from beliefset
-    const visibleAgents = Array.from(beliefset.values()).filter(agent => agent.id !== me.id);
-    const visibleAgentIds = new Set(visibleAgents.map(agent => agent.id));
+// function checkAgentVisibility() {
+//     // Get all currently visible agents from beliefset
+//     const visibleAgents = Array.from(beliefset.values()).filter(agent => agent.id !== me.id);
+//     const visibleAgentIds = new Set(visibleAgents.map(agent => agent.id));
     
-    console.log(`\n👁️ Checking agent visibility:`);
-    console.log(`My position: (${me.x.toFixed(2)}, ${me.y.toFixed(2)})`);
-    console.log(`Agent observation range: ${AGENT_OBS_RANGE}`);
-    console.log(`Visible agents: ${visibleAgents.length}`);
-    console.log(`Tracked agents: ${otherAgents.size}`);
+//     console.log(`\n👁️ Checking agent visibility:`);
+//     console.log(`My position: (${me.x.toFixed(2)}, ${me.y.toFixed(2)})`);
+//     console.log(`Agent observation range: ${AGENT_OBS_RANGE}`);
+//     console.log(`Visible agents: ${visibleAgents.length}`);
+//     console.log(`Tracked agents: ${otherAgents.size}`);
     
-    // Check each tracked agent
-    for (let [agentId, agent] of otherAgents) {
-        const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
-        const canSeeAgent = distance < AGENT_OBS_RANGE;
-        const agentIsVisible = visibleAgentIds.has(agentId);
+//     // Check each tracked agent
+//     for (let [agentId, agent] of otherAgents) {
+//         const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
+//         const canSeeAgent = distance < AGENT_OBS_RANGE;
+//         const agentIsVisible = visibleAgentIds.has(agentId);
         
-        console.log(`Agent ${agentId}: pos(${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) distance:${distance} canSee:${canSeeAgent} isVisible:${agentIsVisible}`);
+//         console.log(`Agent ${agentId}: pos(${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) distance:${distance} canSee:${canSeeAgent} isVisible:${agentIsVisible}`);
         
-        if (canSeeAgent) {
-            if (agentIsVisible) {
-                // Agent is visible - update last seen
-                console.log(`✅ Agent ${agentId} is visible - updating last seen`);
-                agent.lastUpdate = Date.now();
-                agent.status = 'visible';
-                otherAgents.set(agentId, agent);
-            } else {
-                // Can see the position but agent is not there - position is empty
-                console.log(`❌ Agent ${agentId} position (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) is empty - updating to unknown`);
-                agent.status = 'unknown';
-                agent.lastUpdate = Date.now();
-                otherAgents.set(agentId, agent);
+//         if (canSeeAgent) {
+//             if (agentIsVisible) {
+//                 // Agent is visible - update last seen
+//                 console.log(`✅ Agent ${agentId} is visible - updating last seen`);
+//                 agent.lastUpdate = Date.now();
+//                 agent.status = 'visible';
+//                 otherAgents.set(agentId, agent);
+//             } else {
+//                 // Can see the posigoToBestDeliveryPointtion but agent is not there - position is empty
+//                 console.log(`❌ Agent ${agentId} position (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) is empty - updating to unknown`);
+//                 agent.status = 'unknown';
+//                 agent.lastUpdate = Date.now();
+//                 otherAgents.set(agentId, agent);
                 
-                // Unblock the position since it's empty
-                if (agent.occupiedCells) {
-                    unblockAgentPositions(agentId, agent.occupiedCells);
-                }
-            }
-        } else {
-            // Can't see the agent's position - mark as out of range but keep position
-            if (agent.status === 'visible') {
-                console.log(`🌫️ Agent ${agentId} out of range - keeping last known position`);
-                agent.status = 'out_of_range';
-                agent.lastUpdate = Date.now();
-                otherAgents.set(agentId, agent);
-                // Don't unblock position - we're keeping it as potentially occupied
-            }
-        }
-    }
-}
+//                 // Unblock the position since it's empty
+//                 if (agent.occupiedCells) {
+//                     unblockAgentPositions(agentId, agent.occupiedCells);
+//                 }
+//             }
+//         } else {
+//             // Can't see the agent's position - mark as out of range but keep position
+//             if (agent.status === 'visible') {
+//                 console.log(`🌫️ Agent ${agentId} out of range - keeping last known position`);
+//                 agent.status = 'out_of_range';
+//                 agent.lastUpdate = Date.now();
+//                 otherAgents.set(agentId, agent);
+//                 // Don't unblock position - we're keeping it as potentially occupied
+//             }
+//         }
+//     }
+// }
 
 // when map is received, update the delivery points
-client.onMap((width, height, tiles) => {
-    console.log('Map received:', width, height);
+// client.onMap((width, height, tiles) => {
+//     console.log('Map received:', width, height);
 
-    deliveryPoints.clear(); // Clear previous entries
+//     deliveryPoints.clear(); // Clear previous entries
     
-    // Create 2D tile array and extract delivery points
-    const tiles2D = createTiles2D(width, height, tiles);
+//     // Create 2D tile array and extract delivery points
+//     const tiles2D = createTiles2D(width, height, tiles);
     
-    // Visualize the map
-    visualizeMap(width, height, tiles2D);
+//     // Visualize the map
+//     visualizeMap(width, height, tiles2D);
     
-    // Create graph from tiles
-    const { graph, nodePositions } = createGraphFromTiles(width, height, tiles2D);
+//     // Create graph from tiles
+//     const { graph, nodePositions } = createGraphFromTiles(width, height, tiles2D);
     
-    // Print graph statistics
-    printGraphStatistics(graph);
+//     // Print graph statistics
+//     printGraphStatistics(graph);
     
-    // Store the graph and map data globally for on-demand pathfinding and graph recreation
-    global.graph = graph;
-    global.nodePositions = nodePositions;
-    global.mapWidth = width;
-    global.mapHeight = height;
-    global.tiles2D = tiles2D;
+//     // Store the graph and map data globally for on-demand pathfinding and graph recreation
+//     global.graph = graph;
+//     global.nodePositions = nodePositions;
+//     global.mapWidth = width;
+//     global.mapHeight = height;
+//     global.tiles2D = tiles2D;
     
-    console.log(`Graph created with ${graph.size} nodes. Ready for pathfinding.`);
+//     console.log(`Graph created with ${graph.size} nodes. Ready for pathfinding.`);
 
-    printDeliveryPoints();
-});
+//     printDeliveryPoints();
+// });
 
-client.onYou(_me => {
-    console.log('You:', _me);
-    me = _me;  // now me.id is your agent id
+// client.onYou(_me => {
+//     console.log('You:', _me);
+//     me = _me;  // now me.id is your agent id
     
-    // Only compute pathfinding when agent is at integer coordinates (not moving)
-    if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
-        findBestDeliveryPoint(me.x, me.y);
-    }
-});
+//     // Only compute pathfinding when agent is at integer coordinates (not moving)
+//     if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
+//         findBestDeliveryPoint(me.x, me.y);
+//     }
+// });
 
 
 
 // Function to check if a path is still valid (all nodes exist in graph)
-function isPathValid(path) {
-    if (!path || path.length === 0) return false;
+// function isPathValid(path) {
+//     if (!path || path.length === 0) return false;
     
-    for (let nodeId of path) {
-        if (!global.graph.has(nodeId)) {
-            console.log(`❌ Path invalid: node ${nodeId} not found in graph`);
-            return false;
-        }
-    }
-    return true;
-}
+//     for (let nodeId of path) {
+//         if (!global.graph.has(nodeId)) {
+//             console.log(`❌ Path invalid: node ${nodeId} not found in graph`);
+//             return false;
+//         }
+//     }
+//     return true;
+// }
 
 // Function to recalculate best delivery path (for future use)
-function recalculateBestDeliveryPath() {
-    console.log('🔄 Recalculating best delivery path...');
+// function recalculateBestDeliveryPath() {
+//     console.log('🔄 Recalculating best delivery path...');
     
-    if (!global.graph) {
-        console.log('Graph not ready yet. Please wait for map to load.');
-        return null;
-    }
+//     if (!global.graph) {
+//         console.log('Graph not ready yet. Please wait for map to load.');
+//         return null;
+//     }
     
-    const bestDelivery = findBestDeliveryPoint(me.x, me.y);
+//     const bestDelivery = findBestDeliveryPoint(me.x, me.y);
     
-    if (!bestDelivery) {
-        console.log('No reachable delivery points found.');
-        return null;
-    }
+//     if (!bestDelivery) {
+//         console.log('No reachable delivery points found.');
+//         return null;
+//     }
     
-    console.log(`New best delivery point: (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
-    console.log(`New distance: ${bestDelivery.distance} steps`);
-    console.log(`New path: ${bestDelivery.path.join(' -> ')}`);
+//     console.log(`New best delivery point: (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
+//     console.log(`New distance: ${bestDelivery.distance} steps`);
+//     console.log(`New path: ${bestDelivery.path.join(' -> ')}`);
     
-    return bestDelivery;
-}
+//     return bestDelivery;
+// }
 
 // Function to automatically navigate to best delivery point with path validation
 async function goToBestDeliveryPoint() {
@@ -513,7 +513,7 @@ async function goToBestDeliveryPoint() {
         // Check if current path is still valid before each move
         if (!isPathValid(bestDelivery.path)) {
             console.log('⚠️ Path blocked! Recalculating best path...');
-            bestDelivery = recalculateBestDeliveryPath();
+            bestDelivery = findBestDeliveryPoint(me.x, me.y);
             
             if (!bestDelivery) {
                 console.log('❌ No valid path found after recalculation. Stopping navigation.');
@@ -568,7 +568,7 @@ process.stdin.on('data', (data) => {
     const command = data.toString().trim().toLowerCase();
     
     if (command === 'go') {
-        goToBestDeliveryPoint();
+        ();
     } else if (command === 'help') {
         console.log('\nAvailable commands:');
         console.log('  go    - Navigate to best delivery point');
@@ -585,392 +585,392 @@ process.stdin.on('data', (data) => {
 console.log('\n🚀 Agent ready! Type "go" to navigate to best delivery point.');
 console.log('Type "help" for available commands.');
 
-client.onAgentsSensing(agents => {
-    const seenAgentIds = new Set();
+// client.onAgentsSensing(agents => {
+//     const seenAgentIds = new Set();
     
-    for (let a of agents) {
-        beliefset.set(a.id, a);
-        seenAgentIds.add(a.id);
+//     for (let a of agents) {
+//         beliefset.set(a.id, a);
+//         seenAgentIds.add(a.id);
         
-        // Skip our own agent
-        if (a.id === me.id) continue;
+//         // Skip our own agent
+//         if (a.id === me.id) continue;
         
 
         
-        const isMoving = !Number.isInteger(a.x) || !Number.isInteger(a.y);
-        const direction = getAgentDirection(a.x, a.y);
-        const occupiedCells = getAgentOccupiedCells(a.x, a.y);
+//         const isMoving = !Number.isInteger(a.x) || !Number.isInteger(a.y);
+//         const direction = getAgentDirection(a.x, a.y);
+//         const occupiedCells = getAgentOccupiedCells(a.x, a.y);
         
-        // Check if this is a new agent or if position has changed
-        const existingAgent = otherAgents.get(a.id);
-        const positionChanged = !existingAgent || 
-                              existingAgent.x !== a.x || 
-                              existingAgent.y !== a.y;
+//         // Check if this is a new agent or if position has changed
+//         const existingAgent = otherAgents.get(a.id);
+//         const positionChanged = !existingAgent || 
+//                               existingAgent.x !== a.x || 
+//                               existingAgent.y !== a.y;
         
-        if (existingAgent && positionChanged) {
-            // Agent moved to a different position - unblock previous positions
-            console.log(`Agent ${a.id} moved from (${existingAgent.x.toFixed(2)}, ${existingAgent.y.toFixed(2)}) to (${a.x.toFixed(2)}, ${a.y.toFixed(2)})`);
-            if (existingAgent.occupiedCells) {
-                unblockAgentPositions(a.id, existingAgent.occupiedCells);
-            }
-        }
+//         if (existingAgent && positionChanged) {
+//             // Agent moved to a different position - unblock previous positions
+//             console.log(`Agent ${a.id} moved from (${existingAgent.x.toFixed(2)}, ${existingAgent.y.toFixed(2)}) to (${a.x.toFixed(2)}, ${a.y.toFixed(2)})`);
+//             if (existingAgent.occupiedCells) {
+//                 unblockAgentPositions(a.id, existingAgent.occupiedCells);
+//             }
+//         }
         
-        // Update or add agent information
-        otherAgents.set(a.id, {
-            x: a.x,
-            y: a.y,
-            lastUpdate: Date.now(),
-            isMoving: isMoving,
-            direction: direction,
-            occupiedCells: occupiedCells,
-            status: 'visible' // Mark as currently visible
-        });
+//         // Update or add agent information
+//         otherAgents.set(a.id, {
+//             x: a.x,
+//             y: a.y,
+//             lastUpdate: Date.now(),
+//             isMoving: isMoving,
+//             direction: direction,
+//             occupiedCells: occupiedCells,
+//             status: 'visible' // Mark as currently visible
+//         });
         
-        // Block new positions only if agent is visible
-        if (isAgentInRange(a.x, a.y, me.x, me.y)) {
-            blockAgentPositions(a.id, occupiedCells);
-        }
+//         // Block new positions only if agent is visible
+//         if (isAgentInRange(a.x, a.y, me.x, me.y)) {
+//             blockAgentPositions(a.id, occupiedCells);
+//         }
         
-        if (!existingAgent) {
-            console.log(`New agent detected: ${a.id} at (${a.x.toFixed(2)}, ${a.y.toFixed(2)}) [${direction}]`);
-        } else if (positionChanged) {
-            console.log(`Agent ${a.id} position updated: (${a.x.toFixed(2)}, ${a.y.toFixed(2)}) [${direction}]`);
-        }
-    }
+//         if (!existingAgent) {
+//             console.log(`New agent detected: ${a.id} at (${a.x.toFixed(2)}, ${a.y.toFixed(2)}) [${direction}]`);
+//         } else if (positionChanged) {
+//             console.log(`Agent ${a.id} position updated: (${a.x.toFixed(2)}, ${a.y.toFixed(2)}) [${direction}]`);
+//         }
+//     }
     
-    // Check all tracked agents for visibility
-    for (let [agentId, agent] of otherAgents) {
-        const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
-        const canSeeAgent = distance < AGENT_OBS_RANGE;
-        const agentIsVisible = seenAgentIds.has(agentId);
+//     // Check all tracked agents for visibility
+//     for (let [agentId, agent] of otherAgents) {
+//         const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
+//         const canSeeAgent = distance < AGENT_OBS_RANGE;
+//         const agentIsVisible = seenAgentIds.has(agentId);
         
-        console.log(`Agent ${agentId}: pos(${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) distance:${distance} canSee:${canSeeAgent} isVisible:${agentIsVisible}`);
+//         console.log(`Agent ${agentId}: pos(${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) distance:${distance} canSee:${canSeeAgent} isVisible:${agentIsVisible}`);
         
-        if (canSeeAgent) {
-            if (agentIsVisible) {
-                // Agent is visible - update last seen
-                console.log(`✅ Agent ${agentId} is visible - updating last seen`);
-                agent.lastUpdate = Date.now();
-                agent.status = 'visible';
-                otherAgents.set(agentId, agent);
-            } else {
-                // Can see the position but agent is not there - position is empty
-                console.log(`❌ Agent ${agentId} position (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) is empty - updating to unknown`);
-                agent.status = 'unknown';
-                agent.lastUpdate = Date.now();
-                otherAgents.set(agentId, agent);
+//         if (canSeeAgent) {
+//             if (agentIsVisible) {
+//                 // Agent is visible - update last seen
+//                 console.log(`✅ Agent ${agentId} is visible - updating last seen`);
+//                 agent.lastUpdate = Date.now();
+//                 agent.status = 'visible';
+//                 otherAgents.set(agentId, agent);
+//             } else {
+//                 // Can see the position but agent is not there - position is empty
+//                 console.log(`❌ Agent ${agentId} position (${agent.x.toFixed(2)}, ${agent.y.toFixed(2)}) is empty - updating to unknown`);
+//                 agent.status = 'unknown';
+//                 agent.lastUpdate = Date.now();
+//                 otherAgents.set(agentId, agent);
                 
-                // Unblock the position since it's empty
-                if (agent.occupiedCells) {
-                    unblockAgentPositions(agentId, agent.occupiedCells);
-                }
-            }
-        } else {
-            // Can't see the agent's position - mark as out of range but keep position
-            if (agent.status === 'visible') {
-                console.log(`🌫️ Agent ${agentId} out of range - keeping last known position`);
-                agent.status = 'out_of_range';
-                agent.lastUpdate = Date.now();
-                otherAgents.set(agentId, agent);
-                // Don't unblock position - we're keeping it as potentially occupied
-            }
-        }
-    }
+//                 // Unblock the position since it's empty
+//                 if (agent.occupiedCells) {
+//                     unblockAgentPositions(agentId, agent.occupiedCells);
+//                 }
+//             }
+//         } else {
+//             // Can't see the agent's position - mark as out of range but keep position
+//             if (agent.status === 'visible') {
+//                 console.log(`🌫️ Agent ${agentId} out of range - keeping last known position`);
+//                 agent.status = 'out_of_range';
+//                 agent.lastUpdate = Date.now();
+//                 otherAgents.set(agentId, agent);
+//                 // Don't unblock position - we're keeping it as potentially occupied
+//             }
+//         }
+//     }
     
-    // Print updated agent list
-    printAgents();
-});
+//     // Print updated agent list
+//     printAgents();
+// });
 
 // Update the parcel in knownParcels
 // If the reward is 1 or less, it is removed from knownParcels and carryingParcels
-function updateExpiredParcel(parcel) {
-    if (parcel.reward > 1) {
-        knownParcels.set(parcel.id, {
-            x: parcel.x,
-            y: parcel.y,
-            reward: parcel.reward,
-            lastUpdate: Date.now()
-        });
-    } else {
-        knownParcels.delete(parcel.id);
-        // carryingParcels.delete(parcel.id);
-    }
-}
+// function updateExpiredParcel(parcel) {
+//     if (parcel.reward > 1) {
+//         knownParcels.set(parcel.id, {
+//             x: parcel.x,
+//             y: parcel.y,
+//             reward: parcel.reward,
+//             lastUpdate: Date.now()
+//         });
+//     } else {
+//         knownParcels.delete(parcel.id);
+//         // carryingParcels.delete(parcel.id);
+//     }
+// }
 
-client.onParcelsSensing(parcels => {
-    const seenNow = new Set(parcels.map(p => p.id));
+// client.onParcelsSensing(parcels => {
+//     const seenNow = new Set(parcels.map(p => p.id));
 
-    // Rebuild carryingParcels from scratch every time
+//     // Rebuild carryingParcels from scratch every time
     
-    carryingParcels.clear();
+//     carryingParcels.clear();
 
-    // Remove parcels that should be visible but aren't
-    for (let [id, parcel] of knownParcels) {
-        const dx = Math.abs(parcel.x - me.x);
-        const dy = Math.abs(parcel.y - me.y);
-        const distance = dx + dy;
+//     // Remove parcels that should be visible but aren't
+//     for (let [id, parcel] of knownParcels) {
+//         const dx = Math.abs(parcel.x - me.x);
+//         const dy = Math.abs(parcel.y - me.y);
+//         const distance = dx + dy;
 
-        if (distance < OBS_RANGE && !seenNow.has(id)) {
-            knownParcels.delete(id);
-        }
-    }
+//         if (distance < OBS_RANGE && !seenNow.has(id)) {
+//             knownParcels.delete(id);
+//         }
+//     }
 
-    for (let p of parcels) {
-        beliefset.set(p.id, p);
+//     for (let p of parcels) {
+//         beliefset.set(p.id, p);
 
-        // If the parcel is not in the knownParcels, add it
-        if (p.carriedBy === null) {
-            updateExpiredParcel(p);
-            continue;
-        }
+//         // If the parcel is not in the knownParcels, add it
+//         if (p.carriedBy === null) {
+//             updateExpiredParcel(p);
+//             continue;
+//         }
 
-        // Fill carryingParcels with parcels currently carried by me
-        if (p.carriedBy === me.id) {
-            knownParcels.delete(p.id);
-            carryingParcels.set(p.id, {
-                reward: p.reward,
-                lastUpdate: Date.now()
-            });
-            continue;
-        }
-
-
-        if (p.carriedBy !== null && p.carriedBy !== me.id  ) {
-            // If the parcel is carried by someone else, remove it from knownParcels
-            knownParcels.delete(p.id);
-            continue;
-        }
-    }
+//         // Fill carryingParcels with parcels currently carried by me
+//         if (p.carriedBy === me.id) {
+//             knownParcels.delete(p.id);
+//             carryingParcels.set(p.id, {
+//                 reward: p.reward,
+//                 lastUpdate: Date.now()
+//             });
+//             continue;
+//         }
 
 
+//         if (p.carriedBy !== null && p.carriedBy !== me.id  ) {
+//             // If the parcel is carried by someone else, remove it from knownParcels
+//             knownParcels.delete(p.id);
+//             continue;
+//         }
+//     }
 
-    // printParcels();
-});
+
+
+//     // printParcels();
+// });
 
 // Handle parcel decay
-function decayParcels(parcelMap, now, decayInterval) {
-    for (let [id, parcel] of parcelMap) {
-        const timePassed = now - parcel.lastUpdate;
+// function decayParcels(parcelMap, now, decayInterval) {
+//     for (let [id, parcel] of parcelMap) {
+//         const timePassed = now - parcel.lastUpdate;
 
-        if (timePassed >= decayInterval) {
-            const ticks = Math.floor(timePassed / decayInterval);
-            const newReward = Math.max(1, parcel.reward - ticks);
+//         if (timePassed >= decayInterval) {
+//             const ticks = Math.floor(timePassed / decayInterval);
+//             const newReward = Math.max(1, parcel.reward - ticks);
 
-            if (newReward <= 1) {
-                parcelMap.delete(id);
-                continue;
-            }
+//             if (newReward <= 1) {
+//                 parcelMap.delete(id);
+//                 continue;
+//             }
 
-            parcel.reward = newReward;
-            parcel.lastUpdate += ticks * decayInterval;
-            parcelMap.set(id, parcel);
-        }
-    }
-}
+//             parcel.reward = newReward;
+//             parcel.lastUpdate += ticks * decayInterval;
+//             parcelMap.set(id, parcel);
+//         }
+//     }
+// }
 
 // Periodically decay parcels every second
 // This is a simple simulation of the decay process
-setInterval(() => {
-    if (!isFinite(DECAY_INTERVAL)) return;
+// setInterval(() => {
+//     if (!isFinite(DECAY_INTERVAL)) return;
 
-    const now = Date.now();
+//     const now = Date.now();
 
-    decayParcels(knownParcels, now, DECAY_INTERVAL);
+//     decayParcels(knownParcels, now, DECAY_INTERVAL);
 
-    // printParcels();
-}, 1000);
+//     // printParcels();
+// }, 1000);
 
 
 // Print the current state of known and carrying parcels
 // This function is called after every update to knownParcels and carryingParcels
 
-function printParcels() {
-    const knownList = Array.from(knownParcels.entries())
-        .map(([id, { x, y, reward }]) => `${id}(${reward}):${x},${y}`)
-        .join(' ');
+// function printParcels() {
+//     const knownList = Array.from(knownParcels.entries())
+//         .map(([id, { x, y, reward }]) => `${id}(${reward}):${x},${y}`)
+//         .join(' ');
 
-    const carryingList = Array.from(carryingParcels.entries())
-        .map(([id, { reward }]) => `${id}(${reward})`)
-        .join(' ');
+//     const carryingList = Array.from(carryingParcels.entries())
+//         .map(([id, { reward }]) => `${id}(${reward})`)
+//         .join(' ');
 
-    console.log('Known Parcels (tracked):', knownList);
-    console.log('Carrying Parcels:', carryingList);
-}
+//     console.log('Known Parcels (tracked):', knownList);
+//     console.log('Carrying Parcels:', carryingList);
+// }
 
-// Print the current state of delivery points
-function printDeliveryPoints() {
-    const list = Array.from(deliveryPoints.entries())
-        .map(([id, { x, y }]) => `${id}: (${x},${y})    `)
-        .join(' ');
-    console.log('Delivery Points:', list);
-}
+// // Print the current state of delivery points
+// function printDeliveryPoints() {
+//     const list = Array.from(deliveryPoints.entries())
+//         .map(([id, { x, y }]) => `${id}: (${x},${y})    `)
+//         .join(' ');
+//     console.log('Delivery Points:', list);
+// }
 
 // Dijkstra's algorithm for shortest path
-function dijkstra(startId, endId) {
-    if (!global.graph) {
-        console.log('Graph not ready yet. Please wait for map to load.');
-        return null;
-    }
+// function dijkstra(startId, endId) {
+//     if (!global.graph) {
+//         console.log('Graph not ready yet. Please wait for map to load.');
+//         return null;
+//     }
     
-    const graph = global.graph;
-    const distances = new Map();
-    const previous = new Map();
-    const visited = new Set();
+//     const graph = global.graph;
+//     const distances = new Map();
+//     const previous = new Map();
+//     const visited = new Set();
     
-    // Initialize distances
-    for (let nodeId of graph.keys()) {
-        distances.set(nodeId, Infinity);
-    }
-    distances.set(startId, 0);
+//     // Initialize distances
+//     for (let nodeId of graph.keys()) {
+//         distances.set(nodeId, Infinity);
+//     }
+//     distances.set(startId, 0);
     
-    // Priority queue (simple implementation)
-    const queue = [startId];
+//     // Priority queue (simple implementation)
+//     const queue = [startId];
     
-    while (queue.length > 0) {
-        // Find node with minimum distance
-        let currentId = queue[0];
-        let minDist = distances.get(currentId);
+//     while (queue.length > 0) {
+//         // Find node with minimum distance
+//         let currentId = queue[0];
+//         let minDist = distances.get(currentId);
         
-        for (let nodeId of queue) {
-            const dist = distances.get(nodeId);
-            if (dist < minDist) {
-                minDist = dist;
-                currentId = nodeId;
-            }
-        }
+//         for (let nodeId of queue) {
+//             const dist = distances.get(nodeId);
+//             if (dist < minDist) {
+//                 minDist = dist;
+//                 currentId = nodeId;
+//             }
+//         }
         
-        // Remove current node from queue
-        queue.splice(queue.indexOf(currentId), 1);
+//         // Remove current node from queue
+//         queue.splice(queue.indexOf(currentId), 1);
         
-        if (currentId === endId) {
-            break; // Found target
-        }
+//         if (currentId === endId) {
+//             break; // Found target
+//         }
         
-        if (visited.has(currentId)) {
-            continue;
-        }
+//         if (visited.has(currentId)) {
+//             continue;
+//         }
         
-        visited.add(currentId);
+//         visited.add(currentId);
         
-        // Check neighbors
-        const neighbors = graph.get(currentId);
-        for (let neighborId of neighbors) {
-            if (visited.has(neighborId)) continue;
+//         // Check neighbors
+//         const neighbors = graph.get(currentId);
+//         for (let neighborId of neighbors) {
+//             if (visited.has(neighborId)) continue;
             
-            const newDist = distances.get(currentId) + 1; // Each step costs 1
-            if (newDist < distances.get(neighborId)) {
-                distances.set(neighborId, newDist);
-                previous.set(neighborId, currentId);
-                if (!queue.includes(neighborId)) {
-                    queue.push(neighborId);
-                }
-            }
-        }
-    }
+//             const newDist = distances.get(currentId) + 1; // Each step costs 1
+//             if (newDist < distances.get(neighborId)) {
+//                 distances.set(neighborId, newDist);
+//                 previous.set(neighborId, currentId);
+//                 if (!queue.includes(neighborId)) {
+//                     queue.push(neighborId);
+//                 }
+//             }
+//         }
+//     }
     
-    // Reconstruct path
-    const path = [];
-    let currentId = endId;
-    while (currentId !== startId) {
-        path.unshift(currentId);
-        currentId = previous.get(currentId);
-        if (!currentId) {
-            return null; // No path found
-        }
-    }
-    path.unshift(startId);
+//     // Reconstruct path
+//     const path = [];
+//     let currentId = endId;
+//     while (currentId !== startId) {
+//         path.unshift(currentId);
+//         currentId = previous.get(currentId);
+//         if (!currentId) {
+//             return null; // No path found
+//         }
+//     }
+//     path.unshift(startId);
     
-    return {
-        cost: distances.get(endId),
-        path: path,
-        pathSize: path.length
-    };
-}
+//     return {
+//         cost: distances.get(endId),
+//         path: path,
+//         pathSize: path.length
+//     };
+// }
 
 // Function to get shortest path between two points
 // NOTE: This function is currently unused but kept as a utility function
 // for future use. It can be called to get the shortest path between any two points.
 // Usage: getShortestPath(startX, startY, endX, endY)
-function getShortestPath(startX, startY, endX, endY) {
-    const startId = `${startX},${startY}`;
-    const endId = `${endX},${endY}`;
+// function getShortestPath(startX, startY, endX, endY) {
+//     const startId = `${startX},${startY}`;
+//     const endId = `${endX},${endY}`;
     
-    const result = dijkstra(startId, endId);
+//     const result = dijkstra(startId, endId);
     
-    if (!result) {
-        console.log(`No path exists between ${startId} and ${endId}.`);
-        return null;
-    }
+//     if (!result) {
+//         console.log(`No path exists between ${startId} and ${endId}.`);
+//         return null;
+//     }
     
-    return result;
-}
+//     return result;
+// }
 
 // Function to find best delivery point from a given position
-function findBestDeliveryPoint(currentX, currentY) {
-    if (!global.graph) {
-        console.log('Graph not ready yet. Please wait for map to load.');
-        return null;
-    }
+// function findBestDeliveryPoint(currentX, currentY) {
+//     if (!global.graph) {
+//         console.log('Graph not ready yet. Please wait for map to load.');
+//         return null;
+//     }
     
-    const currentId = `${currentX},${currentY}`;
+//     const currentId = `${currentX},${currentY}`;
     
-    if (!global.graph.has(currentId)) {
-        console.log(`Invalid starting position: ${currentId} not found in graph.`);
-        return null;
-    }
+//     if (!global.graph.has(currentId)) {
+//         console.log(`Invalid starting position: ${currentId} not found in graph.`);
+//         return null;
+//     }
     
-    let bestDeliveryPoint = null;
-    let shortestDistance = Infinity;
-    let bestPath = null;
-    let unreachableDeliveryPoints = [];
-    let reachableDeliveryPoints = [];
+//     let bestDeliveryPoint = null;
+//     let shortestDistance = Infinity;
+//     let bestPath = null;
+//     let unreachableDeliveryPoints = [];
+//     let reachableDeliveryPoints = [];
     
-    // Check all delivery points
-    for (let [deliveryId, deliveryPos] of deliveryPoints) {
-        if (!global.graph.has(deliveryId)) {
-            console.log(`Warning: Delivery point ${deliveryId} not found in graph.`);
-            unreachableDeliveryPoints.push(deliveryId);
-            continue;
-        }
+//     // Check all delivery points
+//     for (let [deliveryId, deliveryPos] of deliveryPoints) {
+//         if (!global.graph.has(deliveryId)) {
+//             console.log(`Warning: Delivery point ${deliveryId} not found in graph.`);
+//             unreachableDeliveryPoints.push(deliveryId);
+//             continue;
+//         }
         
-        const pathResult = dijkstra(currentId, deliveryId);
+//         const pathResult = dijkstra(currentId, deliveryId);
         
-        if (pathResult && pathResult.cost < shortestDistance) {
-            shortestDistance = pathResult.cost;
-            bestDeliveryPoint = deliveryPos;
-            bestPath = pathResult.path;
-            reachableDeliveryPoints.push(deliveryId);
-        } else if (!pathResult) {
-            unreachableDeliveryPoints.push(deliveryId);
-        } else {
-            reachableDeliveryPoints.push(deliveryId);
-        }
-    }
+//         if (pathResult && pathResult.cost < shortestDistance) {
+//             shortestDistance = pathResult.cost;
+//             bestDeliveryPoint = deliveryPos;
+//             bestPath = pathResult.path;
+//             reachableDeliveryPoints.push(deliveryId);
+//         } else if (!pathResult) {
+//             unreachableDeliveryPoints.push(deliveryId);
+//         } else {
+//             reachableDeliveryPoints.push(deliveryId);
+//         }
+//     }
     
-    if (bestDeliveryPoint) {
-        console.log(`\nBest Delivery Point Found:`);
-        console.log(`Position: (${bestDeliveryPoint.x}, ${bestDeliveryPoint.y})`);
-        console.log(`Distance: ${shortestDistance} steps`);
-        console.log(`Path: ${bestPath.join(' -> ')}`);
-        console.log(`Path size: ${bestPath.length} nodes`);
-        console.log(`Reachable delivery points: ${reachableDeliveryPoints.length}/${deliveryPoints.size}`);
+//     if (bestDeliveryPoint) {
+//         console.log(`\nBest Delivery Point Found:`);
+//         console.log(`Position: (${bestDeliveryPoint.x}, ${bestDeliveryPoint.y})`);
+//         console.log(`Distance: ${shortestDistance} steps`);
+//         console.log(`Path: ${bestPath.join(' -> ')}`);
+//         console.log(`Path size: ${bestPath.length} nodes`);
+//         console.log(`Reachable delivery points: ${reachableDeliveryPoints.length}/${deliveryPoints.size}`);
         
-        return {
-            deliveryPoint: bestDeliveryPoint,
-            distance: shortestDistance,
-            path: bestPath,
-            pathSize: bestPath.length
-        };
-    } else {
-        console.log(`\n❌ No path exists to any delivery point from position (${currentX}, ${currentY})`);
-        console.log(`Total delivery points: ${deliveryPoints.size}`);
-        console.log(`Reachable delivery points: ${reachableDeliveryPoints.length}`);
-        console.log(`Unreachable delivery points: ${unreachableDeliveryPoints.length}`);
+//         return {
+//             deliveryPoint: bestDeliveryPoint,
+//             distance: shortestDistance,
+//             path: bestPath,
+//             pathSize: bestPath.length
+//         };
+//     } else {
+//         console.log(`\n❌ No path exists to any delivery point from position (${currentX}, ${currentY})`);
+//         console.log(`Total delivery points: ${deliveryPoints.size}`);
+//         console.log(`Reachable delivery points: ${reachableDeliveryPoints.length}`);
+//         console.log(`Unreachable delivery points: ${unreachableDeliveryPoints.length}`);
         
-        if (unreachableDeliveryPoints.length > 0) {
-            console.log(`Unreachable delivery points: ${unreachableDeliveryPoints.join(', ')}`);
-        }
+//         if (unreachableDeliveryPoints.length > 0) {
+//             console.log(`Unreachable delivery points: ${unreachableDeliveryPoints.join(', ')}`);
+//         }
         
-        return null;
-    }
-}
+//         return null;
+//     }
+// }
