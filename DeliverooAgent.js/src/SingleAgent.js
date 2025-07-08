@@ -559,13 +559,11 @@ class IdleMove extends Plan {
         if (generatingCells.size > 0 && !Array.from(generatingCells.values()).some(tile => {
             utils.manhattanDistance({x:me.x, y:me.y}, {x:tile.x, y:tile.y}) <= config.OBS_RANGE;
         })) {
-            let closestTile = null;
-            let shortestPath = null;
+            let closestTile = undefined;
+            let shortestPath = undefined;
 
             for (const tile of generatingCells.values()) {
-                console.log(tile.x , tile.y );
-                console.log("Thats crazy bro");
-                const path = utils.getShortestPath(me.x, me.y, tile.x, tile.y); // Replace with your actual pathfinding
+                const path = utils.getShortestPath(me.x, me.y, tile.x, tile.y).path; // Replace with your actual pathfinding
                 if (path && (!shortestPath || path.length < shortestPath.length)) {
                     shortestPath = path;
                     closestTile = tile;
