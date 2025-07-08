@@ -544,69 +544,89 @@ class BlindMove extends Plan {
 
 class IdleMove extends Plan {
 
-    static isApplicableTo ( idle ) {
+    static directions = ['up', 'right', 'down', 'left'];
+    static LastDir = Math.floor(Math.random() * IdleMove.directions.length);
+    static _prevCell = null;
+
+    static isApplicableTo(idle) {
         return idle == 'idle';
     }
 
-    static directions = ['up', 'right', 'down', 'left'];
-    static LastDir = Math.floor(Math.random() * IdleMove.directions.length);
+    async execute(go_to) {
+        if (this.stopped) throw ['stopped'];
 
-    async execute ( go_to ) {
+        const x = me.x;
+        const y = me.y;
+        const currentNodeId = '(' + x + ',' + y + ')';
+        const prevCell = IdleMove._prevCell;
+        let foundMove = false;
+        let skippedPrev = null;
 
-        // // Up: [0, 0.25] Down: [0.25, 0.5] Left:[0.5, 0.75] Right:[0.75, 1]
-        // let directions = ['up', 'right', 'down', 'left'];
-        // let LastDir = Math.floor(Math.random() * directions.length);
-
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
-
-        let rand = Math.random();
-        let index;
-        let dir;
-        let moved;
-        if (rand < 0.65) {
-            index = IdleMove.LastDir;
-        } else if (rand < 0.8) {
-            index = (IdleMove.LastDir + 3) % 4;
-        } else if (rand < 0.95) {
-            index = (IdleMove.LastDir + 1) % 4;
-        } else {
-            index = (IdleMove.LastDir + 1) % 2;
+        // Shuffle directions for equal chance
+        const dirs = IdleMove.directions.slice();
+        for (let i = dirs.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
         }
 
-        dir = IdleMove.directions[index];
-
-        let x = me.x;
-        let y = me.y
-
-        switch(dir) {
-            case 'up':
-                if (utils.isFree(x, y + 1))
-                    moved = await client.emitMove('up');
-                break;
-            case 'down':
-                if (utils.isFree(x, y - 1))
-                    moved = await client.emitMove('down');
-                break;
-            case 'left':
-                if (utils.isFree(x - 1, y))
-                    moved = await client.emitMove('left');
-                break;
-            case 'right':
-                if (utils.isFree(x + 1, y))
-                    moved = await client.emitMove('right');
+        // Try all directions, skipping previous cell if possible
+        for (const dir of dirs) {
+            let [targetX, targetY] = [x, y];
+            if (dir === 'up') targetY++;
+            else if (dir === 'down') targetY--;
+            else if (dir === 'left') targetX--;
+            else if (dir === 'right') targetX++;
+            const targetNodeId = '(' + targetX + ',' + targetY + ')';
+            if (
+                global.graph &&
+                global.graph.has(currentNodeId) &&
+                global.graph.has(targetNodeId) &&
+                global.graph.get(currentNodeId).has(targetNodeId)
+            ) {
+                if (prevCell && targetNodeId === prevCell) {
+                    skippedPrev = { dir, targetX, targetY, targetNodeId };
+                    continue;
+                }
+                let moveResult = null;
+                switch (dir) {
+                    case 'up': moveResult = await client.emitMove('up'); break;
+                    case 'down': moveResult = await client.emitMove('down'); break;
+                    case 'left': moveResult = await client.emitMove('left'); break;
+                    case 'right': moveResult = await client.emitMove('right'); break;
+                }
+                if (moveResult) {
+                    IdleMove.LastDir = IdleMove.directions.indexOf(dir);
+                    IdleMove._prevCell = currentNodeId;
+                    foundMove = true;
+                    break;
+                }
+            }
         }
 
-        if (moved) {
-            IdleMove.LastDir = index;
-        }
-        else {
-            IdleMove.LastDir = (IdleMove.LastDir + 1) % 2;
+        // If no move found and we skipped the previous cell, try it now
+        if (!foundMove && skippedPrev) {
+            const { dir, targetNodeId } = skippedPrev;
+            let moveResult = null;
+            switch (dir) {
+                case 'up': moveResult = await client.emitMove('up'); break;
+                case 'down': moveResult = await client.emitMove('down'); break;
+                case 'left': moveResult = await client.emitMove('left'); break;
+                case 'right': moveResult = await client.emitMove('right'); break;
+            }
+            if (moveResult) {
+                IdleMove.LastDir = IdleMove.directions.indexOf(dir);
+                IdleMove._prevCell = currentNodeId;
+                foundMove = true;
+            }
         }
 
+        if (!foundMove) {
+            // No valid move found, remain idle
+            IdleMove.LastDir = (IdleMove.LastDir + 1) % 4;
+            IdleMove._prevCell = null;
+        }
         return true;
-
     }
-
 }
 
 // plan classes are added to plan library 
