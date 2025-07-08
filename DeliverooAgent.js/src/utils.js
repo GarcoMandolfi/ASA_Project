@@ -46,8 +46,8 @@ function decayParcels() {
     for (let [id, parcel] of freeParcels) {
         const timePassed = now - parcel.lastUpdate;
 
-        if (timePassed >= config.DECAY_INTERVAL) {
-            const ticks = Math.floor(timePassed / config.DECAY_INTERVAL);
+        if (timePassed >= config.PARCEL_DECADING_INTERVAL) {
+            const ticks = Math.floor(timePassed / config.PARCEL_DECADING_INTERVAL);
             const newReward = Math.max(1, parcel.reward - ticks);
 
             if (newReward <= 1) {
@@ -56,7 +56,7 @@ function decayParcels() {
             }
 
             parcel.reward = newReward;
-            parcel.lastUpdate += ticks * config.DECAY_INTERVAL;
+            parcel.lastUpdate += ticks * config.PARCEL_DECADING_INTERVAL;
             freeParcels.set(id, parcel);
         }
     }
@@ -473,7 +473,7 @@ function getScore ( predicate ) {
         let deliveryDistance = manhattanDistance ({x, y}, me);
         let deliveryReward = carriedValue();
 
-        const decayInterval = !isFinite(config.DECAY_INTERVAL) ? 20 : config.DECAY_INTERVAL;
+        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 20 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
         const steps = deliveryDistance / (config.MOVEMENT_STEPS || 1);
         const deliveryTime = steps * moveDuration;
@@ -496,7 +496,7 @@ function getScore ( predicate ) {
 
         const d = manhattanDistance({x, y}, me);
         const timeSinceSeen = Date.now() - predicate[5];
-        const decaySteps = Math.floor(timeSinceSeen / config.DECAY_INTERVAL);
+        const decaySteps = Math.floor(timeSinceSeen / config.PARCEL_DECADING_INTERVAL);
         const rewardEstimate = predicate[4] - decaySteps;
 
         const normalizedReward = Math.max(rewardEstimate, 0);

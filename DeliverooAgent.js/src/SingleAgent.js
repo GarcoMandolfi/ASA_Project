@@ -20,9 +20,10 @@ let config = {};
 
 client.onConfig(cfg => {
     
+    console.log(cfg.PARCEL_DECADING_INTERVAL.type);
     config = {
         ...cfg,
-        DECAY_INTERVAL: utils.parseDecayInterval (cfg.DECAY_INTERVAL)
+        PARCEL_DECADING_INTERVAL: utils.parseDecayInterval(cfg.PARCEL_DECADING_INTERVAL)
     }
 
 });
@@ -90,7 +91,7 @@ client.onYou( ( {id, name, x, y, score} ) => {
 } )
 
 setInterval(() => {
-    if (!isFinite(config.DECAY_INTERVAL)) return;
+    if (!isFinite(config.PARCEL_DECADING_INTERVAL)) return;
 
     utils.decayParcels();
 
@@ -734,26 +735,3 @@ async function goToBestDeliveryPoint() {
         await new Promise(resolve => setTimeout(resolve, config.CLOCK));
     }
 }
-
-// Set up terminal input listener
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (data) => {
-    const command = data.toString().trim().toLowerCase();
-    
-    if (command === 'go') {
-        goToBestDeliveryPoint();
-    } else if (command === 'help') {
-        console.log('\nAvailable commands:');
-        console.log('  go    - Navigate to best delivery point');
-        console.log('  help  - Show this help message');
-        console.log('  quit  - Exit the program');
-    } else if (command === 'quit') {
-        console.log('Exiting...');
-        process.exit(0);
-    } else {
-        console.log(`Unknown command: ${command}. Type 'help' for available commands.`);
-    }
-});
-
-console.log('\n🚀 Agent ready! Type "go" to navigate to best delivery point.');
-console.log('Type "help" for available commands.');
