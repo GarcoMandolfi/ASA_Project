@@ -22,7 +22,7 @@ client.onConfig(cfg => {
     
     config = {
         ...cfg,
-        DECAY_INTERVAL: utils.parseDecayInterval
+        DECAY_INTERVAL: utils.parseDecayInterval (cfg.DECAY_INTERVAL)
     }
 
 });
@@ -146,7 +146,7 @@ client.onAgentsSensing(agents => {
     // Check all tracked agents for visibility
     for (let [agentId, agent] of otherAgents) {
         const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
-        const canSeeAgent = distance < config.AGENT_OBS_RANGE;
+        const canSeeAgent = distance < config.AGENTS_OBSERVATION_DISTANCE;
         const agentIsVisible = seenAgentIds.has(agentId);
         
         if (canSeeAgent) {
@@ -183,7 +183,7 @@ client.onParcelsSensing( async (pp) => {
     carriedParcels.clear();
 
     for (const [id, parcel] of freeParcels) {
-        if (utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.OBS_RANGE && !pp.find(p => p.id === parcel.id))
+        if (utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE && !pp.find(p => p.id === parcel.id))
             freeParcels.delete(id);
     }
 
@@ -203,8 +203,14 @@ client.onParcelsSensing( async (pp) => {
 // OPTIONS GENERATION AND FILTERING
 // ###################################################################################################
 
-function generateOptions () {
+function logWithTimestamp(functionName) {
+    const now = new Date();
+    const timestamp = now.toISOString();
+    console.log(`[${timestamp}] ${functionName}`);
+}
 
+function generateOptions () {
+    logWithTimestamp('generateOptions');
     const carriedTotal = utils.carriedValue();
 
     let best_option = null;
@@ -221,14 +227,14 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
-        console.log('parcel', parcel);
+        // console.log('parcel', parcel);
         if (
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
             Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
         ) {
-            console.log("getting shortest path",parcel.id);
+            // console.log("getting shortest path",parcel.id);
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
-            console.log('pickupPath', pickupPath);
+            // console.log('pickupPath', pickupPath);
             if (pickupPath && pickupPath.cost < best_distance) {
                 best_distance = pickupPath.cost;
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, parcel.reward, parcel.lastUpdate, pickupPath.path];
@@ -267,7 +273,7 @@ class IntentionRevision {
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
-                console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
+                // console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
             
                 // Current intention
                 const intention = this.intention_queue[0];
@@ -277,7 +283,7 @@ class IntentionRevision {
                 let id = intention.predicate[2]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
-                    console.log( 'Skipping intention because no more valid', intention.predicate );
+                    // console.log( 'Skipping intention because no more valid', intention.predicate );
                     this.intention_queue.shift();
                     continue;
                 }
@@ -286,7 +292,7 @@ class IntentionRevision {
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
-                    console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
                 // Remove from the queue
@@ -320,7 +326,7 @@ class IntentionRevision {
             return;
         }
         
-        console.log( 'IntentionRevisionReplace.push', predicate );
+        // console.log( 'IntentionRevisionReplace.push', predicate );
         const intention = new Intention( this, predicate );
         this.intention_queue.push( intention );
 
@@ -483,6 +489,7 @@ class GoPickUp extends Plan {
     }
 
     async execute ( go_pick_up, x, y, id, reward, lastUpdate, path ) {
+        logWithTimestamp('GoPickUp.execute');
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
@@ -500,6 +507,7 @@ class GoDeliver extends Plan {
     }
 
     async execute ( go_deliver, x, y, path ) {
+        logWithTimestamp('GoDeliver.execute');
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
@@ -517,6 +525,7 @@ class BlindMove extends Plan {
     }
 
     async execute ( go_to, x, y, path ) {
+        logWithTimestamp('BlindMove.execute');
         if (path && Array.isArray(path) && path.length > 1) {
             // path is an array of node strings like '(x,y)'
             for (let i = 1; i < path.length; i++) {
@@ -553,12 +562,19 @@ class IdleMove extends Plan {
     }
 
     async execute(go_to) {
-
+        logWithTimestamp('IdleMove.execute');
         if (this.stopped) throw ['stopped'];
 
-        if (generatingCells.size > 0 && !Array.from(generatingCells.values()).some(tile => {
-            utils.manhattanDistance({x:me.x, y:me.y}, {x:tile.x, y:tile.y}) <= config.OBS_RANGE;
-        })) {
+        let inObsRange = false;
+        for (const tile of generatingCells.values()) {
+            // console.log('tile manhattan distance', utils.manhattanDistance({x: me.x, y: me.y}, {x: tile.x, y: tile.y}));
+            if (utils.manhattanDistance({x: me.x, y: me.y}, {x: tile.x, y: tile.y}) <= config.PARCELS_OBSERVATION_DISTANCE) {
+                inObsRange = true;
+                // console.log('inObsRange', inObsRange);
+                break;
+            }
+        }
+        if (generatingCells.size > 0 && !inObsRange) {
             let closestTile = undefined;
             let shortestPath = undefined;
 

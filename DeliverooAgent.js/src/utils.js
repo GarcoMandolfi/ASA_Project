@@ -474,14 +474,14 @@ function getScore ( predicate ) {
         let deliveryReward = carriedValue();
 
         const decayInterval = !isFinite(config.DECAY_INTERVAL) ? 20 : config.DECAY_INTERVAL;
-        const moveDuration = config.MOVE_DURATION || 200;
-        const steps = deliveryDistance / (config.MOVE_STEPS || 1);
+        const moveDuration = config.MOVEMENT_DURATION || 200;
+        const steps = deliveryDistance / (config.MOVEMENT_STEPS || 1);
         const deliveryTime = steps * moveDuration;
         const expectedDecay = deliveryTime / decayInterval;
 
         let score = deliveryReward - deliveryDistance * 2 - expectedDecay;
 
-        const pressure = carriedParcels.size / config.MAX_PARCELS;
+        const pressure = carriedParcels.size / config.PARCELS_MAX;
         score += pressure * 10;
 
         score = Math.min(score, 0);
