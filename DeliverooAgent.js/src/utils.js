@@ -96,7 +96,7 @@ function createTiles2D(width, height, tiles) {
         // Check for delivery points (type 2)
         if (tile.type === 2)
             deliveryCells.set("(" + tile.x + "," + tile.y + ")", tile);
-        else if (tile.type === 3)
+        else if (tile.type === 1)
             generatingCells.set("(" + tile.x + "," + tile.y + ")", tile);
     }
     

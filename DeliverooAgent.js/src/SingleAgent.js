@@ -553,40 +553,82 @@ class IdleMove extends Plan {
     }
 
     async execute(go_to) {
+
         if (this.stopped) throw ['stopped'];
 
-        const x = me.x;
-        const y = me.y;
-        const currentNodeId = '(' + x + ',' + y + ')';
-        const prevCell = IdleMove._prevCell;
-        let foundMove = false;
-        let skippedPrev = null;
+        if (generatingCells.size > 0 && !Array.from(generatingCells.values()).some(tile => {
+            utils.manhattanDistance({x:me.x, y:me.y}, {x:tile.x, y:tile.y}) <= config.OBS_RANGE;
+        })) {
+            let closestTile = null;
+            let shortestPath = null;
 
-        // Shuffle directions for equal chance
-        const dirs = IdleMove.directions.slice();
-        for (let i = dirs.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
-        }
-
-        // Try all directions, skipping previous cell if possible
-        for (const dir of dirs) {
-            let [targetX, targetY] = [x, y];
-            if (dir === 'up') targetY++;
-            else if (dir === 'down') targetY--;
-            else if (dir === 'left') targetX--;
-            else if (dir === 'right') targetX++;
-            const targetNodeId = '(' + targetX + ',' + targetY + ')';
-            if (
-                global.graph &&
-                global.graph.has(currentNodeId) &&
-                global.graph.has(targetNodeId) &&
-                global.graph.get(currentNodeId).has(targetNodeId)
-            ) {
-                if (prevCell && targetNodeId === prevCell) {
-                    skippedPrev = { dir, targetX, targetY, targetNodeId };
-                    continue;
+            for (const tile of generatingCells.values()) {
+                console.log(tile.x , tile.y );
+                console.log("Thats crazy bro");
+                const path = utils.getShortestPath(me.x, me.y, tile.x, tile.y); // Replace with your actual pathfinding
+                if (path && (!shortestPath || path.length < shortestPath.length)) {
+                    shortestPath = path;
+                    closestTile = tile;
                 }
+            }
+
+            if (shortestPath) {
+                await this.subIntention( ['go_to', closestTile.x, closestTile.y, shortestPath] );
+            }
+        }
+        else{
+
+            const x = me.x;
+            const y = me.y;
+            const currentNodeId = '(' + x + ',' + y + ')';
+            const prevCell = IdleMove._prevCell;
+            let foundMove = false;
+            let skippedPrev = null;
+
+            // Shuffle directions for equal chance
+            const dirs = IdleMove.directions.slice();
+            for (let i = dirs.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+            }
+
+            // Try all directions, skipping previous cell if possible
+            for (const dir of dirs) {
+                let [targetX, targetY] = [x, y];
+                if (dir === 'up') targetY++;
+                else if (dir === 'down') targetY--;
+                else if (dir === 'left') targetX--;
+                else if (dir === 'right') targetX++;
+                const targetNodeId = '(' + targetX + ',' + targetY + ')';
+                if (
+                    global.graph &&
+                    global.graph.has(currentNodeId) &&
+                    global.graph.has(targetNodeId) &&
+                    global.graph.get(currentNodeId).has(targetNodeId)
+                ) {
+                    if (prevCell && targetNodeId === prevCell) {
+                        skippedPrev = { dir, targetX, targetY, targetNodeId };
+                        continue;
+                    }
+                    let moveResult = null;
+                    switch (dir) {
+                        case 'up': moveResult = await client.emitMove('up'); break;
+                        case 'down': moveResult = await client.emitMove('down'); break;
+                        case 'left': moveResult = await client.emitMove('left'); break;
+                        case 'right': moveResult = await client.emitMove('right'); break;
+                    }
+                    if (moveResult) {
+                        IdleMove.LastDir = IdleMove.directions.indexOf(dir);
+                        IdleMove._prevCell = currentNodeId;
+                        foundMove = true;
+                        break;
+                    }
+                }
+            }
+
+            // If no move found and we skipped the previous cell, try it now
+            if (!foundMove && skippedPrev) {
+                const { dir, targetNodeId } = skippedPrev;
                 let moveResult = null;
                 switch (dir) {
                     case 'up': moveResult = await client.emitMove('up'); break;
@@ -598,33 +640,16 @@ class IdleMove extends Plan {
                     IdleMove.LastDir = IdleMove.directions.indexOf(dir);
                     IdleMove._prevCell = currentNodeId;
                     foundMove = true;
-                    break;
                 }
             }
-        }
 
-        // If no move found and we skipped the previous cell, try it now
-        if (!foundMove && skippedPrev) {
-            const { dir, targetNodeId } = skippedPrev;
-            let moveResult = null;
-            switch (dir) {
-                case 'up': moveResult = await client.emitMove('up'); break;
-                case 'down': moveResult = await client.emitMove('down'); break;
-                case 'left': moveResult = await client.emitMove('left'); break;
-                case 'right': moveResult = await client.emitMove('right'); break;
-            }
-            if (moveResult) {
-                IdleMove.LastDir = IdleMove.directions.indexOf(dir);
-                IdleMove._prevCell = currentNodeId;
-                foundMove = true;
+            if (!foundMove) {
+                // No valid move found, remain idle
+                IdleMove.LastDir = (IdleMove.LastDir + 1) % 4;
+                IdleMove._prevCell = null;
             }
         }
 
-        if (!foundMove) {
-            // No valid move found, remain idle
-            IdleMove.LastDir = (IdleMove.LastDir + 1) % 4;
-            IdleMove._prevCell = null;
-        }
         return true;
     }
 }
