@@ -207,12 +207,10 @@ function generateOptions () {
 
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
-        for (const cell of deliveryCells.values()) {
-            const d = utils.manhattanDistance(me, {x: cell.x, y: cell.y});
-            if (d < best_distance) {
-                best_distance = d;
-                best_option = ['go_deliver', cell.x, cell.y];
-            }
+        const bestDelivery = utils.findClosestDelivery(me.x, me.y);
+        if (bestDelivery) {
+            best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
+            best_distance = bestDelivery.distance;
         }
     }
 
@@ -486,13 +484,13 @@ class GoPickUp extends Plan {
 
 class GoDeliver extends Plan {
 
-    static isApplicableTo ( go_deliver, x, y ) {
+    static isApplicableTo ( go_deliver, x, y, path ) {
         return go_deliver == 'go_deliver';
     }
 
-    async execute ( go_deliver, x, y ) {
+    async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        await this.subIntention( ['go_to', x, y] );
+        await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.emitPutdown()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
@@ -503,58 +501,33 @@ class GoDeliver extends Plan {
 
 class BlindMove extends Plan {
 
-    static isApplicableTo ( go_to, x, y ) {
+    static isApplicableTo ( go_to, x, y, path ) {
         return go_to == 'go_to';
     }
 
-    async execute ( go_to, x, y ) {
-
-        while ( me.x != x || me.y != y ) {
-
-            if ( this.stopped ) throw ['stopped']; // if stopped then quit
-
-            let moved_horizontally;
-            let moved_vertically;
-            
-            // this.log('me', me, 'xy', x, y);
-
-            if ( x > me.x )
-                moved_horizontally = await client.emitMove('right')
-                // status_x = await this.subIntention( 'go_to', {x: me.x+1, y: me.y} );
-            else if ( x < me.x )
-                moved_horizontally = await client.emitMove('left')
-                // status_x = await this.subIntention( 'go_to', {x: me.x-1, y: me.y} );
-
-            if (moved_horizontally) {
-                me.x = moved_horizontally.x;
-                me.y = moved_horizontally.y;
+    async execute ( go_to, x, y, path ) {
+        if (path && Array.isArray(path) && path.length > 1) {
+            // path is an array of node strings like '(x,y)'
+            for (let i = 1; i < path.length; i++) {
+                if (this.stopped) throw ['stopped'];
+                const [targetX, targetY] = path[i].replace(/[()]/g, '').split(',').map(Number);
+                const dx = targetX - me.x;
+                const dy = targetY - me.y;
+                let moved = null;
+                if (dx > 0) moved = await client.emitMove('right');
+                else if (dx < 0) moved = await client.emitMove('left');
+                else if (dy > 0) moved = await client.emitMove('up');
+                else if (dy < 0) moved = await client.emitMove('down');
+                if (moved) {
+                    me.x = moved.x;
+                    me.y = moved.y;
+                } else {
+                    this.log('stucked');
+                    throw 'stucked';
+                }
             }
-
-            if ( this.stopped ) throw ['stopped']; // if stopped then quit
-
-            if ( y > me.y )
-                moved_vertically = await client.emitMove('up')
-                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y+1} );
-            else if ( y < me.y )
-                moved_vertically = await client.emitMove('down')
-                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y-1} );
-
-            if (moved_vertically) {
-                me.x = moved_vertically.x;
-                me.y = moved_vertically.y;
-            }
-            
-            if ( ! moved_horizontally && ! moved_vertically) {
-                this.log('stucked');
-                throw 'stucked';
-            } else if ( me.x == x && me.y == y ) {
-                // this.log('target reached');
-            }
-            
+            return true;
         }
-
-        return true;
-
     }
 }
 
