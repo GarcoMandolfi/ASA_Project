@@ -6,7 +6,7 @@ const client = new DeliverooApi(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
 )
 
-// let DECAY_INTERVAL = 0;
+// let PARCEL_DECADING_INTERVAL = 0;
 // let OBS_RANGE = 0;
 // let MOVE_DURATION = 0;
 // let MOVE_STEPS = 0;
@@ -20,11 +20,15 @@ let config = {};
 
 client.onConfig(cfg => {
     
-    console.log(cfg.PARCEL_DECADING_INTERVAL.type);
+
+    
     config = {
         ...cfg,
         PARCEL_DECADING_INTERVAL: utils.parseDecayInterval(cfg.PARCEL_DECADING_INTERVAL)
+        
     }
+
+    console.log(config);
 
 });
 
