@@ -350,6 +350,7 @@ function dijkstra(startId, endId) {
         
         // Check neighbors
         const neighbors = graph.get(currentId);
+        if (!neighbors) continue;
         for (let neighborId of neighbors) {
             if (visited.has(neighborId)) continue;
             
@@ -553,8 +554,8 @@ function isFree(x, y) {
 // for future use. It can be called to get the shortest path between any two points.
 // Usage: getShortestPath(startX, startY, endX, endY)
 function getShortestPath(startX, startY, endX, endY) {
-    const startId = `${startX},${startY}`;
-    const endId = `${endX},${endY}`;
+    const startId = "(" + startX + "," + startY + ")";
+    const endId = "(" + endX + "," + endY + ")";
     
     const result = dijkstra(startId, endId);
     
