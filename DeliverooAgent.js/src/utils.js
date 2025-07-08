@@ -549,6 +549,24 @@ function isFree(x, y) {
     return true;
 }
 
+// Function to get shortest path between two points
+// for future use. It can be called to get the shortest path between any two points.
+// Usage: getShortestPath(startX, startY, endX, endY)
+function getShortestPath(startX, startY, endX, endY) {
+    const startId = `${startX},${startY}`;
+    const endId = `${endX},${endY}`;
+    
+    const result = dijkstra(startId, endId);
+    
+    if (!result) {
+        console.log(`No path exists between ${startId} and ${endId}.`);
+        return null;
+    }
+    
+    return result;
+}
+
+export {getShortestPath as getShortestPath}
 export {decayParcels as decayParcels}
 export {getPredicateKey as getKey}
 export {parseDecayInterval as parseDecayInterval}
