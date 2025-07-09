@@ -275,6 +275,7 @@ class IntentionRevision {
     }
 
     async loop ( ) {
+        await new Promise(res => setTimeout(res, 50));
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
@@ -302,6 +303,9 @@ class IntentionRevision {
 
                 // Remove from the queue
                 this.intention_queue.shift();
+            }
+            else {
+                generateOptions();
             }
             // Postpone next iteration at setImmediate
             await new Promise( res => setImmediate( res ) );
