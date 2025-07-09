@@ -534,11 +534,12 @@ function stillValid (predicate) {
         case 'go_pick_up':
             let id = predicate[3];
             let p = freeParcels.get(id);
-            let path = predicate[6];
-            if (p && p.carriedBy || p && path === null) return false;
+            let pickupPath = predicate[6];
+            if (p && p.carriedBy || p && pickupPath === null) return false;
             return true;
         case 'go_deliver':
-            if (carriedParcels.size == 0)
+            let deliveryPath = predicate[4];
+            if (carriedParcels.size == 0 || deliveryPath.isPathValid === false)
                 return false;
             return true;
         case 'idle':

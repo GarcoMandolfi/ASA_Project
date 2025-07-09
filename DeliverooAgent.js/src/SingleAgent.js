@@ -299,7 +299,7 @@ class IntentionRevision {
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
-                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                    console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
                 // Remove from the queue
@@ -535,9 +535,7 @@ class BlindMove extends Plan {
     }
 
     async execute ( go_to, x, y, path ) {
-        for (const a of otherAgents.values()) {
-            console.log(a.id + " occupies " + a.occupiedCells);
-        }
+        logWithTimestamp('BlindMove.execute');
         if (path && Array.isArray(path) && path.length > 1) {
             // path is an array of node strings like '(x,y)'
             for (let i = 1; i < path.length; i++) {
