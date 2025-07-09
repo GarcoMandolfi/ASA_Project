@@ -28,7 +28,7 @@ client.onConfig(cfg => {
         
     }
 
-    // console.log(config);
+    console.log(config);
 
 });
 
@@ -104,9 +104,8 @@ setInterval(() => {
 
 client.onAgentsSensing(agents => {
     const seenAgentIds = new Set();
-
+    
     for (let a of agents) {
-        // console.log('yeah yeah', a);
         seenAgentIds.add(a.id);
         
         // Skip our own agent
@@ -146,8 +145,6 @@ client.onAgentsSensing(agents => {
         // Block new positions
         utils.blockAgentPositions(a.id, occupiedCells);
     }
-    console.log('aaaaaaagents', otherAgents);
-
     
     // Check all tracked agents for visibility
     for (let [agentId, agent] of otherAgents) {
@@ -182,8 +179,6 @@ client.onAgentsSensing(agents => {
             }
         }
     }
-    // Debug print agents and their occupied cells
-    debugAgentsOccupiedCells();
 });
 
 
@@ -293,7 +288,7 @@ class IntentionRevision {
                 let id = intention.predicate[2]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
-                    // console.log( 'Skipping intention because no more valid', intention.predicate );
+                    console.log( 'Skipping intention because no more valid', intention.predicate );
                     this.intention_queue.shift();
                     continue;
                 }
@@ -302,7 +297,7 @@ class IntentionRevision {
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
-                    // console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
+                    console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
                 // Remove from the queue
@@ -319,7 +314,7 @@ class IntentionRevision {
     // async push ( predicate ) { }
 
     log ( ...args ) {
-        // console.log( ...args )
+        console.log( ...args )
     }
 
     async push(predicate) {
@@ -406,10 +401,10 @@ class Intention {
     }
 
     log ( ...args ) {
-        // if ( this.#parent && this.#parent.log )
-        //     this.#parent.log( '\t', ...args )
-        // else
-            // console.log( ...args )
+        if ( this.#parent && this.#parent.log )
+            this.#parent.log( '\t', ...args )
+        else
+            console.log( ...args )
     }
 
     updateIntention(predicate) {
@@ -501,10 +496,10 @@ class Plan {
     }
 
     log ( ...args ) {
-        // if ( this.#parent && this.#parent.log )
-        //     this.#parent.log( '\t', ...args )
-        // else
-            // console.log( ...args )
+        if ( this.#parent && this.#parent.log )
+            this.#parent.log( '\t', ...args )
+        else
+            console.log( ...args )
     }
 
     // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
@@ -567,19 +562,6 @@ class BlindMove extends Plan {
             for (let i = 1; i < path.length; i++) {
                 if (this.stopped) throw ['stopped'];
                 const [targetX, targetY] = path[i].replace(/[()]/g, '').split(',').map(Number);
-                
-                // Check if the edge between current and target node exists in graph
-                const currentNodeId = '(' + me.x + ',' + me.y + ')';
-                const targetNodeId = '(' + targetX + ',' + targetY + ')';
-                
-                if (!global.graph || 
-                    !global.graph.has(currentNodeId) || 
-                    !global.graph.has(targetNodeId) ||
-                    !global.graph.get(currentNodeId).has(targetNodeId)) {
-                    this.log('Edge not available in graph:', currentNodeId, '->', targetNodeId);
-                    throw 'edge_not_available';
-                }
-                
                 const dx = targetX - me.x;
                 const dy = targetY - me.y;
                 let moved = null;
@@ -624,7 +606,6 @@ class IdleMove extends Plan {
             }
         }
         if (generatingCells.size > 0 && !inObsRange) {
-            // console.log('generatingCells.size > 0 && !inObsRange');
             let closestTile = undefined;
             let shortestPath = undefined;
 
@@ -637,7 +618,6 @@ class IdleMove extends Plan {
             }
 
             if (shortestPath) {
-                // console.log('we are here and this is the shortest path', shortestPath);
                 await this.subIntention( ['go_to', closestTile.x, closestTile.y, shortestPath] );
             }
         }
@@ -694,21 +674,17 @@ class IdleMove extends Plan {
             // If no move found and we skipped the previous cell, try it now
             if (!foundMove && skippedPrev) {
                 const { dir, targetNodeId } = skippedPrev;
-                
-                // Check if target node still exists in graph before attempting move
-                if (global.graph && global.graph.has(targetNodeId) && global.graph.get(currentNodeId).has(targetNodeId) ) {
-                    let moveResult = null;
-                    switch (dir) {
-                        case 'up': moveResult = await client.emitMove('up'); break;
-                        case 'down': moveResult = await client.emitMove('down'); break;
-                        case 'left': moveResult = await client.emitMove('left'); break;
-                        case 'right': moveResult = await client.emitMove('right'); break;
-                    }
-                    if (moveResult) {
-                        IdleMove.LastDir = IdleMove.directions.indexOf(dir);
-                        IdleMove._prevCell = currentNodeId;
-                        foundMove = true;
-                    }
+                let moveResult = null;
+                switch (dir) {
+                    case 'up': moveResult = await client.emitMove('up'); break;
+                    case 'down': moveResult = await client.emitMove('down'); break;
+                    case 'left': moveResult = await client.emitMove('left'); break;
+                    case 'right': moveResult = await client.emitMove('right'); break;
+                }
+                if (moveResult) {
+                    IdleMove.LastDir = IdleMove.directions.indexOf(dir);
+                    IdleMove._prevCell = currentNodeId;
+                    foundMove = true;
                 }
             }
 
@@ -731,22 +707,22 @@ planLibrary.push( IdleMove )
 
 
 async function goToBestDeliveryPoint() {
-    // console.log('Starting navigation to best delivery point...');
+    console.log('Starting navigation to best delivery point...');
     
     if (!global.graph) {
-        // console.log('Graph not ready yet. Please wait for map to load.');
+        console.log('Graph not ready yet. Please wait for map to load.');
         return;
     }
     
     let bestDelivery = utils.findClosestDelivery(me.x, me.y);
     
     if (!bestDelivery) {
-        // console.log('No reachable delivery points found.');
+        console.log('No reachable delivery points found.');
         return;
     }
     
-    // console.log(`\nNavigating to delivery point at (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
-    // console.log(`Total distance: ${bestDelivery.distance} steps`);
+    console.log(`\nNavigating to delivery point at (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
+    console.log(`Total distance: ${bestDelivery.distance} steps`);
     
     // Follow the complete path step by step
     for (let i = 1; i < bestDelivery.path.length; i++) {
@@ -787,24 +763,5 @@ async function goToBestDeliveryPoint() {
         // Wait for the move to complete and position to update
         // Use just the clock value for faster movement
         await new Promise(resolve => setTimeout(resolve, config.CLOCK));
-    }
-}
-
-function debugAgentsOccupiedCells() {
-    for (const [agentId, agent] of otherAgents) {
-        console.log(`Agent ${agentId}:`);
-        console.log(agent);
-        if (!agent.occupiedCells) {
-            console.log('  No occupiedCells');
-            continue;
-        }
-        for (const cell of agent.occupiedCells) {
-            if (global.graph && global.graph.has(cell)) {
-                const edges = Array.from(global.graph.get(cell));
-                console.log(`  Cell ${cell}: node exists in graph. Edges: ${edges.join(', ')}`);
-            } else {
-                console.log(`  Cell ${cell}: node does NOT exist in graph.`);
-            }
-        }
     }
 }
