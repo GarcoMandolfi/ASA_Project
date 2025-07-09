@@ -142,12 +142,9 @@ client.onAgentsSensing(agents => {
             occupiedCells: occupiedCells,
             status: 'visible'
         });
-
-        // Block new positions only if agent is visible
-        if (utils.isAgentInRange(a.x, a.y, me.x, me.y, config.AGENTS_OBSERVATION_DISTANCE)) {
-            console.log('blocking agent positions', a.id, occupiedCells);
-            utils.blockAgentPositions(a.id, occupiedCells);
-        }
+        
+        // Block new positions
+        utils.blockAgentPositions(a.id, occupiedCells);
     }
     console.log('aaaaaaagents', otherAgents);
 
