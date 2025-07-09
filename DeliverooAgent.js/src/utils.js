@@ -295,17 +295,6 @@ function unblockAgentPositions(agentId, occupiedCells) {
     }
 }
 
-
-// Helper function to check if an agent is within observation range
-function isAgentInRange(agentX, agentY, myX, myY, AGENT_OBS_RANGE) {
-    const dx = Math.abs(agentX - myX);
-    const dy = Math.abs(agentY - myY);
-    const distance = dx + dy; // Manhattan distance
-    
-    return distance < AGENT_OBS_RANGE;
-}
-
-
 function dijkstra(startId, endId) {
     if (!global.graph) {
         return null;
@@ -595,7 +584,6 @@ export {getAgentDirection as getAgentDirection}
 export {getAgentOccupiedCells as getAgentOccupiedCells}
 export {blockAgentPositions as blockAgentPositions}
 export {unblockAgentPositions as unblockAgentPositions}
-export {isAgentInRange as isAgentInRange}
 export {parcelUpdate as parcelUpdate}
 export {getScore as getScore}
 export {carriedValue as carriedValue}
