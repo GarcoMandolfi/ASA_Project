@@ -535,7 +535,9 @@ class BlindMove extends Plan {
     }
 
     async execute ( go_to, x, y, path ) {
-        logWithTimestamp('BlindMove.execute');
+        for (const a of otherAgents.values()) {
+            console.log(a.id + " occupies " + a.occupiedCells);
+        }
         if (path && Array.isArray(path) && path.length > 1) {
             // path is an array of node strings like '(x,y)'
             for (let i = 1; i < path.length; i++) {

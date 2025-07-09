@@ -256,7 +256,8 @@ function unblockAgentPositions(agentId, occupiedCells) {
     
     // For each occupied cell, restore it to the graph
     for (let cell of occupiedCells) {
-        const [x, y] = cell.split(',').map(Number);
+        // Remove parentheses and split to get x and y as numbers
+        const [x, y] = cell.replace(/[()]/g, '').split(',').map(Number);
         
         // Check if this cell should be a valid node (not a wall)
         const tile = global.tiles2D[x][y];
