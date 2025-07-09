@@ -539,7 +539,7 @@ function stillValid (predicate) {
             return true;
         case 'go_deliver':
             let deliveryPath = predicate[4];
-            if (carriedParcels.size == 0 || deliveryPath.isPathValid === false)
+            if (carriedParcels.size == 0 /*|| deliveryPath.isPathValid === false*/)
                 return false;
             return true;
         case 'idle':

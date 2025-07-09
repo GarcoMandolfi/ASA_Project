@@ -335,6 +335,13 @@ class IntentionRevision {
         )) {
             return;
         }
+
+        // This is a reference to the actual object in the queue, not a copy
+        let existingIntention = this.intention_queue.find(i => {
+            return i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ');
+        });
+        if (existingIntention && existingIntention.predicate[0] != "idle")
+            existingIntention.updateIntention(predicate);
         
         // console.log( 'IntentionRevisionReplace.push', predicate );
         const intention = new Intention( this, predicate );
@@ -400,6 +407,22 @@ class Intention {
             this.#parent.log( '\t', ...args )
         else
             console.log( ...args )
+    }
+
+    updateIntention(predicate) {
+
+        switch(predicate[0]){
+            case "go_pick_up":
+                this.predicate[6] = predicate[6];
+                break;
+            case "go_deliver":
+                this.predicate[4] = predicate[4];
+                break;
+            default:
+                return false;
+        }
+
+        return true;
     }
 
     #started = false;
