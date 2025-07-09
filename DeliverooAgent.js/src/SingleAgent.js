@@ -142,10 +142,8 @@ client.onAgentsSensing(agents => {
             status: 'visible'
         });
         
-        // Block new positions only if agent is visible
-        if (utils.isAgentInRange(a.x, a.y, me.x, me.y)) {
-            utils.blockAgentPositions(a.id, occupiedCells);
-        }
+        // Block new positions
+        utils.blockAgentPositions(a.id, occupiedCells);
     }
     
     // Check all tracked agents for visibility
