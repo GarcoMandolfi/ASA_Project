@@ -211,7 +211,7 @@ client.onParcelsSensing( async (pp) => {
 function logWithTimestamp(functionName) {
     const now = new Date();
     const timestamp = now.toISOString();
-    console.log(`[${timestamp}] ${functionName}`);
+    // console.log(`[${timestamp}] ${functionName}`);
 }
 
 function generateOptions () {
@@ -246,11 +246,12 @@ function generateOptions () {
             }
         }
     }
-
     // Push the best option found
-    if (best_option)
+    if (best_option !== null && best_distance !== null) {
         myAgent.push(best_option);
+    }
     else {
+
         myAgent.push(['idle']);
     }
 
@@ -289,7 +290,7 @@ class IntentionRevision {
                 let id = intention.predicate[2]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
-                    // console.log( 'Skipping intention because no more valid', intention.predicate );
+                    console.log( 'Skipping intention because no more valid', intention.predicate );
                     this.intention_queue.shift();
                     continue;
                 }
@@ -322,7 +323,7 @@ class IntentionRevision {
 
         // Find existing index with same id (only for go_pick_up)
         // Check if already queued
-        const last = this.intention_queue.at( this.intention_queue.length - 1 );
+        const last = this.intention_queue[this.intention_queue.length - 1];
         
         if ( last && last.predicate.slice(0, 3).join(' ') == predicate.slice(0, 3).join(' ') ) {
             return; // intention is already being achieved

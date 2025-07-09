@@ -389,7 +389,7 @@ function dijkstra(startId, endId) {
 
 function findClosestDelivery(x, y) {
     if (!global.graph) {
-        return null;
+        return {cost: null, path: null, pathSize: null};
     }
     
     const currentId = "(" + x + "," + y + ")";
@@ -434,7 +434,7 @@ function findClosestDelivery(x, y) {
         };
     } else {
         
-        return null;
+        return {cost: null, path: null, pathSize: null};
     }
 }
 
@@ -470,8 +470,11 @@ function getScore ( predicate ) {
 
         const x = predicate[1];
         const y = predicate[2];
-        let deliveryDistance = manhattanDistance ({x, y}, me);
+        let deliveryDistance = getShortestPath ( me.x, me.y, x, y).cost;
         let deliveryReward = carriedValue();
+        if (deliveryDistance == null)   
+            return -2;
+
 
         const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 20 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
@@ -494,19 +497,24 @@ function getScore ( predicate ) {
         const x = predicate[1];
         const y = predicate[2];
 
-        const d = manhattanDistance({x, y}, me);
+        const d = getShortestPath ( me.x, me.y, x, y).cost;
+        if (d == null)
+        {
+            return -2;
+        }
         const timeSinceSeen = Date.now() - predicate[5];
         const decaySteps = Math.floor(timeSinceSeen / config.PARCEL_DECADING_INTERVAL);
         const rewardEstimate = predicate[4] - decaySteps;
 
         const normalizedReward = Math.max(rewardEstimate, 0);
         const score = 2 * normalizedReward / (d + 1); // +1 to avoid division by zero
-
         return score;
     }
 
     if (type == 'idle')
+    {
         return -1;
+    }
 
     return 0;
 }
@@ -525,7 +533,8 @@ function stillValid (predicate) {
         case 'go_pick_up':
             let id = predicate[3];
             let p = freeParcels.get(id);
-            if (p && p.carriedBy) return false;
+            let path = predicate[6];
+            if (p && p.carriedBy || p && path === null) return false;
             return true;
         case 'go_deliver':
             if (carriedParcels.size == 0)
@@ -536,6 +545,7 @@ function stillValid (predicate) {
             if (carriedParcels.size === 0 && freeParcels.size == 0)
                 return true;
             return false;
+            // return true;
         default:
             return false;
     }
@@ -563,7 +573,7 @@ function getShortestPath(startX, startY, endX, endY) {
     
     if (!result) {
         console.log(`No path exists between ${startId} and ${endId}.`);
-        return null;
+        return {cost: null, path: null, pathSize: null};
     }
     
     return result;
