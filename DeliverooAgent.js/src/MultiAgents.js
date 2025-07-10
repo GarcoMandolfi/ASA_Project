@@ -1,10 +1,23 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import * as utils from "./utils.js"
+import * as utils from "./mUtils.js"
+/*
 
+*/
 // Get agent number from command line arguments
 const agentNumber = process.argv[2] || '1'; // Default to agent 1 if no argument provided
 const AGENT1_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIwNTE2NiIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAxIiwidGVhbUlkIjoiNWUxNmRlIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5Mzg1fQ.eyiEl2lqQ0ez1ZWdkRIz4QCJh-hZA6EFi3B-0Yp9Cg0'
 const AGENT2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU1ZTA0ZSIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAyIiwidGVhbUlkIjoiMmJmYmZiIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5MzkyfQ.TJ8TUSPjzaEP1Sq79ejqSxA33ZaH-fcf32goUuLLQHA'
+
+/*
+
+also, now i want to also implement something that every time you recieved the message from the other agent( with that id) ,
+ first decode it and make 2 variables called recieved freeParcells and received otherAgents, decode the message info to them.
+  then you should do two loops for freeparcels and otheragents. and check the lastseens. for freeParcels if the recieved data's 
+  last seen was higher ( it seen more recently) then update the value of the 
+  corresponding parcel in our freeparcel with the recieved ones.
+   and for otheragents, except  for our own agent, (can be checked by id) update information about other agents as well
+   ( and ofcource if nesessary it should handle the occupiedcells and block , unblock graphs.) 
+*/ 
 
 
 // Select token based on agent number
@@ -55,7 +68,7 @@ client.onConfig(cfg => {
 const me = {id: null, name: null, x: null, y: null, score: null};
 
 /**
- * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number} > }
+ * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number, lastSeen:number} > }
  */
 const freeParcels = new Map();
 // #######################################################################################################################
@@ -82,6 +95,31 @@ const deliveryCells = new Map();
  * @type { Map< string, {x:number, y:number, type:Number} > }
  */
 const generatingCells = new Map();
+
+const COMM_DELAY = 50; // ms
+global.COMM_DELAY = COMM_DELAY;
+
+// Helper to serialize Maps to JSON
+function mapToObj(map) {
+    return Object.fromEntries(map);
+}
+
+setInterval(() => {
+    // Only send if the other agent is present in the map
+    if (!otherAgents.has(OTHER_AGENT_ID)) {
+        return; // Do nothing if the other agent is not present
+    }
+
+    // Prepare the data to send
+    const data = {
+        freeParcels: mapToObj(freeParcels),
+        otherAgents: mapToObj(otherAgents)
+    };
+    const message = JSON.stringify(data);
+
+    // Send to the other agent
+    client.emitSay(OTHER_AGENT_ID, message);
+}, COMM_DELAY);
 
 export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells}
 
@@ -200,23 +238,34 @@ client.onAgentsSensing(agents => {
 });
 
 
-client.onParcelsSensing( async (pp) => {
+client.onParcelsSensing(async (pp) => {
     carriedParcels.clear();
 
     for (const [id, parcel] of freeParcels) {
-        if (utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE && !pp.find(p => p.id === parcel.id))
+        if (
+            utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE &&
+            !pp.find(p => p.id === parcel.id)
+        ) {
             freeParcels.delete(id);
+        }
     }
 
     for (const p of pp) {
         if (p.carriedBy === me.id && !carriedParcels.has(p.id)) {
             freeParcels.delete(p.id);
-            carriedParcels.set(p.id, {id:p.id, reward:p.reward, lastUpdate:Date.now()});
-        }
-        else if (p.carriedBy === null)
-            utils.parcelUpdate(p);
-        else
+            carriedParcels.set(p.id, { id: p.id, reward: p.reward, lastUpdate: Date.now() });
+        } else if (p.carriedBy === null) {
+            // Update or add parcel, and set lastSeen
+            let existing = freeParcels.get(p.id) || {};
+            freeParcels.set(p.id, {
+                ...existing,
+                ...p,
+                lastUpdate: Date.now(), // or keep your logic for lastUpdate
+                lastSeen: Date.now()
+            });
+        } else {
             freeParcels.delete(p.id);
+        }
     }
 });
 

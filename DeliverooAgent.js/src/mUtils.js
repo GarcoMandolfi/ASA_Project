@@ -1,4 +1,4 @@
-import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells} from "./SingleAgent.js";
+import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells} from "./MultiAgents.js";
 
 
 
@@ -420,16 +420,16 @@ function isPathValid(path) {
     return true;
 }
 
-function parcelUpdate(parcel) {
-    if ( parcel.reward > 1 ) {
-        freeParcels.set ( parcel.id, {
-            ...parcel,
-            lastUpdate: Date.now()
-        })
-    }
-    else
-        freeParcels.delete(parcel.id);
-}
+// function parcelUpdate(parcel) {
+//     if ( parcel.reward > 1 ) {
+//         freeParcels.set ( parcel.id, {
+//             ...parcel,
+//             lastUpdate: Date.now()
+//         })
+//     }
+//     else
+//         freeParcels.delete(parcel.id);
+// }
 
 
 function getScore ( predicate ) {
@@ -579,7 +579,7 @@ export {getAgentDirection as getAgentDirection}
 export {getAgentOccupiedCells as getAgentOccupiedCells}
 export {blockAgentPositions as blockAgentPositions}
 export {unblockAgentPositions as unblockAgentPositions}
-export {parcelUpdate as parcelUpdate}
+// export {parcelUpdate as parcelUpdate}
 export {getScore as getScore}
 export {carriedValue as carriedValue}
 export {stillValid as stillValid}
