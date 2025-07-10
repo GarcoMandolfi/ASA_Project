@@ -2,7 +2,7 @@ TODO:
 Single Agent: (OPTIONAL)
 - fix the problem with colliding with other agents and getting penalty ( sometimes it happens (we need to know why its only sometimes))
 - fix the problem with that if every other path is blocked then it doesn't move at all 
-- Modify the score function for the intention
+- Modify the score function for the intention (DONE)
 - EXPLORE : 
     - for choosing the candidates: 
         1- number of generating cells (or the ratio)
@@ -27,7 +27,7 @@ Multi Agent: (MANDATORY)
         1- EXPLORE better (split the map / choose the candidates accordingly)
         2- NO PATH for one Agent (so the other agent should take the parcels and deliver)
         3- 
-        4- 
+        4-   
         5- 
         6- )
 
