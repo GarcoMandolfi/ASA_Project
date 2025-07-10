@@ -62,22 +62,6 @@ function decayParcels() {
     }
 }
 
-// this function is used to get the key of the predicate
-function getPredicateKey(predicate) {
-    const [type, ...args] = predicate;
-
-    switch (type) {
-        case 'go_pick_up':
-            return 'go_pick_up ' + args[2];
-        case 'go_deliver':
-            return 'go deliver ' + args[0] + ' ' + args[1]; // type:id
-        default:
-            return predicate.join(' '); // fallback to full string match
-    }
-}
-
-
-
 
 // Helper function to create 2D tile array from flat tiles array
 function createTiles2D(width, height, tiles) {
@@ -232,8 +216,6 @@ function getAgentDirection(agent) {
 function blockAgentPositions(agentId, occupiedCells) {
     if (!global.graph) return;
     
-    console.log(`Blocking positions for agent ${agentId}: ${occupiedCells.join(', ')}`);
-    
     // Remove edges to/from occupied cells
     for (let cell of occupiedCells) {
         if (global.graph.has(cell)) {
@@ -251,8 +233,6 @@ function blockAgentPositions(agentId, occupiedCells) {
 // Helper function to unblock agent positions in the graph
 function unblockAgentPositions(agentId, occupiedCells) {
     if (!global.graph || !global.nodePositions) return;
-    
-    console.log(`Unblocking positions for agent ${agentId}: ${occupiedCells.join(', ')}`);
     
     // For each occupied cell, restore it to the graph
     for (let cell of occupiedCells) {
@@ -444,7 +424,7 @@ function parcelUpdate(parcel) {
     if ( parcel.reward > 1 ) {
         freeParcels.set ( parcel.id, {
             ...parcel,
-            lastSeen: Date.now()
+            lastUpdate: Date.now()
         })
     }
     else
@@ -454,9 +434,10 @@ function parcelUpdate(parcel) {
 
 function getScore ( predicate ) {
 
+    if (!predicate) return;
     const type = predicate[0];
 
-    if (type == 'go_deliver') {
+    if (type === 'go_deliver') {
 
         const x = predicate[1];
         const y = predicate[2];
@@ -472,36 +453,49 @@ function getScore ( predicate ) {
         const deliveryTime = steps * moveDuration;
         const expectedDecay = deliveryTime / decayInterval;
 
-        let score = deliveryReward - deliveryDistance * 2 - expectedDecay;
+        let overallDecay = 0;
+        for (const [id, parcel] of carriedParcels) {
+            if(parcel.reward < expectedDecay) overallDecay += parcel.reward;
+            else overallDecay += expectedDecay;
+        }
 
-        const pressure = carriedParcels.size / config.PARCELS_MAX;
-        score += pressure * 10;
+        let score = deliveryReward - overallDecay;
 
-        score = Math.min(score, 0);
+        score = Math.max(score, 0);
 
         return score;
     }
 
-    if (type == 'go_pick_up') {
+    if (type === 'go_pick_up') {
         
         const x = predicate[1];
         const y = predicate[2];
 
-        const d = getShortestPath ( me.x, me.y, x, y).cost;
-        if (d == null)
+        const pickupDistance = getShortestPath ( me.x, me.y, x, y).cost;
+        if (pickupDistance == null)
         {
             return -2;
         }
-        const timeSinceSeen = Date.now() - predicate[5];
+        const p = freeParcels.get(predicate[3]);
+        if (!p) return;
+        const reward = p.reward;
+        const lastUpdate = p.lastUpdate;
+        const timeSinceSeen = Date.now() - lastUpdate;
         const decaySteps = Math.floor(timeSinceSeen / config.PARCEL_DECADING_INTERVAL);
-        const rewardEstimate = predicate[4] - decaySteps;
 
-        const normalizedReward = Math.max(rewardEstimate, 0);
-        const score = 2 * normalizedReward / (d + 1); // +1 to avoid division by zero
+        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 20 : config.PARCEL_DECADING_INTERVAL;
+        const moveDuration = config.MOVEMENT_DURATION || 200;
+        const steps = pickupDistance / (config.MOVEMENT_STEPS || 1);
+        const pickupTime = steps * moveDuration;
+        const expectedDecay = pickupTime / decayInterval;
+
+        const rewardEstimate = reward - decaySteps - expectedDecay;
+
+        const score = Math.max(rewardEstimate, 0); // +1 to avoid division by zero
         return score;
     }
 
-    if (type == 'idle')
+    if (type === 'idle')
     {
         return -1;
     }
@@ -523,11 +517,11 @@ function stillValid (predicate) {
         case 'go_pick_up':
             let id = predicate[3];
             let p = freeParcels.get(id);
-            let pickupPath = predicate[6];
+            let pickupPath = predicate[4];
             if (p && p.carriedBy || p && pickupPath === null) return false;
             return true;
         case 'go_deliver':
-            let deliveryPath = predicate[4];
+            // let deliveryPath = predicate[4];
             if (carriedParcels.size == 0 /*|| deliveryPath.isPathValid === false*/)
                 return false;
             return true;
@@ -563,7 +557,6 @@ function getShortestPath(startX, startY, endX, endY) {
     const result = dijkstra(startId, endId);
     
     if (!result) {
-        console.log(`No path exists between ${startId} and ${endId}.`);
         return {cost: null, path: null, pathSize: null};
     }
     
@@ -572,7 +565,6 @@ function getShortestPath(startX, startY, endX, endY) {
 
 export {getShortestPath as getShortestPath}
 export {decayParcels as decayParcels}
-export {getPredicateKey as getKey}
 export {parseDecayInterval as parseDecayInterval}
 export {manhattanDistance as manhattanDistance}
 export {createTiles2D as createTiles2D}

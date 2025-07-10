@@ -6,21 +6,9 @@ const client = new DeliverooApi(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
 )
 
-// let PARCEL_DECADING_INTERVAL = 0;
-// let OBS_RANGE = 0;
-// let MOVE_DURATION = 0;
-// let MOVE_STEPS = 0;
-// let MAX_PARCELS = 0;
-// let AGENT_OBS_RANGE = 0;
-// let CLOCK = 0;
-
 let config = {};
 
-
-
 client.onConfig(cfg => {
-    
-
     
     config = {
         ...cfg,
@@ -98,7 +86,7 @@ setInterval(() => {
     if (!isFinite(config.PARCEL_DECADING_INTERVAL)) return;
 
     utils.decayParcels();
-
+    
 }, 1000);
 
 
@@ -206,14 +194,7 @@ client.onParcelsSensing( async (pp) => {
 // OPTIONS GENERATION AND FILTERING
 // ###################################################################################################
 
-function logWithTimestamp(functionName) {
-    const now = new Date();
-    const timestamp = now.toISOString();
-    // console.log(`[${timestamp}] ${functionName}`);
-}
-
 function generateOptions () {
-    logWithTimestamp('generateOptions');
     const carriedTotal = utils.carriedValue();
 
     let best_option = null;
@@ -230,17 +211,14 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
-        // console.log('parcel', parcel);
         if (
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
             Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
         ) {
-            // console.log("getting shortest path",parcel.id);
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
-            // console.log('pickupPath', pickupPath);
             if (pickupPath && pickupPath.cost < best_distance) {
                 best_distance = pickupPath.cost;
-                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, parcel.reward, parcel.lastUpdate, pickupPath.path];
+                best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             }
         }
     }
@@ -249,7 +227,6 @@ function generateOptions () {
         myAgent.push(best_option);
     }
     else {
-
         myAgent.push(['idle']);
     }
 
@@ -278,7 +255,6 @@ class IntentionRevision {
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
-                // console.log( 'intentionRevision.loop', this.intention_queue.map(i=>i.predicate) );
             
                 // Current intention
                 const intention = this.intention_queue[0];
@@ -288,7 +264,6 @@ class IntentionRevision {
                 let id = intention.predicate[2]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
-                    console.log( 'Skipping intention because no more valid', intention.predicate );
                     this.intention_queue.shift();
                     continue;
                 }
@@ -297,7 +272,6 @@ class IntentionRevision {
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
-                    console.log( 'Failed intention', ...intention.predicate, 'with error:', ...error )
                 } );
 
                 // Remove from the queue
@@ -318,6 +292,8 @@ class IntentionRevision {
     }
 
     async push(predicate) {
+
+        if(!Number.isInteger(me.x) || !Number.isInteger(me.y)) return;
 
         // Find existing index with same id (only for go_pick_up)
         // Check if already queued
@@ -341,13 +317,14 @@ class IntentionRevision {
         if (existingIntention && existingIntention.predicate[0] != "idle")
             existingIntention.updateIntention(predicate);
         
-        // console.log( 'IntentionRevisionReplace.push', predicate );
         const intention = new Intention( this, predicate );
         this.intention_queue.push( intention );
+        let i = intention.predicate;
 
         // Sort by score descending
         this.intention_queue.sort((a, b) => {
-            return utils.getScore(b.predicate) - utils.getScore(a.predicate);
+            let result  =  utils.getScore(b.predicate) - utils.getScore(a.predicate);
+            return result;
         });
 
         // Stop current if not at top
@@ -411,10 +388,10 @@ class Intention {
 
         switch(predicate[0]){
             case "go_pick_up":
-                this.predicate[6] = predicate[6];
+                this.predicate[4] = predicate[4];
                 break;
             case "go_deliver":
-                this.predicate[4] = predicate[4];
+                this.predicate[3] = predicate[3];
                 break;
             default:
                 return false;
@@ -515,12 +492,11 @@ class Plan {
 
 class GoPickUp extends Plan {
 
-    static isApplicableTo ( go_pick_up, x, y, id, reward, lastUpdate, path ) {
+    static isApplicableTo ( go_pick_up, x, y, id, path ) {
         return go_pick_up == 'go_pick_up';
     }
 
-    async execute ( go_pick_up, x, y, id, reward, lastUpdate, path ) {
-        logWithTimestamp('GoPickUp.execute');
+    async execute ( go_pick_up, x, y, id, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
@@ -538,7 +514,6 @@ class GoDeliver extends Plan {
     }
 
     async execute ( go_deliver, x, y, path ) {
-        logWithTimestamp('GoDeliver.execute');
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
@@ -556,7 +531,6 @@ class BlindMove extends Plan {
     }
 
     async execute ( go_to, x, y, path ) {
-        logWithTimestamp('BlindMove.execute');
         if (path && Array.isArray(path) && path.length > 1) {
             // path is an array of node strings like '(x,y)'
             for (let i = 1; i < path.length; i++) {
@@ -593,15 +567,12 @@ class IdleMove extends Plan {
     }
 
     async execute(go_to) {
-        logWithTimestamp('IdleMove.execute');
         if (this.stopped) throw ['stopped'];
 
         let inObsRange = false;
         for (const tile of generatingCells.values()) {
-            // console.log('tile manhattan distance', utils.manhattanDistance({x: me.x, y: me.y}, {x: tile.x, y: tile.y}));
             if (utils.manhattanDistance({x: me.x, y: me.y}, {x: tile.x, y: tile.y}) <= config.PARCELS_OBSERVATION_DISTANCE) {
                 inObsRange = true;
-                // console.log('inObsRange', inObsRange);
                 break;
             }
         }
@@ -704,112 +675,3 @@ planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
 planLibrary.push( IdleMove )
-
-
-async function goToBestDeliveryPoint() {
-    console.log('Starting navigation to best delivery point...');
-    
-    if (!global.graph) {
-        console.log('Graph not ready yet. Please wait for map to load.');
-        return;
-    }
-    
-    let bestDelivery = utils.findClosestDelivery(me.x, me.y);
-    
-    if (!bestDelivery) {
-        console.log('No reachable delivery points found.');
-        return;
-    }
-    
-    console.log(`\nNavigating to delivery point at (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
-    console.log(`Total distance: ${bestDelivery.distance} steps`);
-    
-    // Follow the complete path step by step
-    for (let i = 1; i < bestDelivery.path.length; i++) {
-        // Check if current path is still valid before each move
-        if (!utils.isPathValid(bestDelivery.path)) {
-            console.log('⚠️ Path blocked! Recalculating best path...');
-            bestDelivery = utils.findClosestDelivery(me.x, me.y);
-            
-            if (!bestDelivery) {
-                console.log('❌ No valid path found after recalculation. Stopping navigation.');
-                return;
-            }
-            
-            // Restart from current position with new path
-            i = 0; // Start from beginning of new path
-            continue;
-        }
-        
-        const currentStep = bestDelivery.path[i];
-        const [targetX, targetY] = currentStep.split(',').map(Number);
-        
-        // Calculate direction from current position to target
-        const dx = targetX - me.x;
-        const dy = targetY - me.y;
-        
-        if (dx > 0) {
-            await client.emitMove('right');
-        } else if (dx < 0) {
-            await client.emitMove('left');
-        } else if (dy > 0) {
-            await client.emitMove('up');
-        } else if (dy < 0) {
-            await client.emitMove('down');
-        } else {
-            continue;
-        }
-        
-        // Wait for the move to complete and position to update
-        // Use just the clock value for faster movement
-        await new Promise(resolve => setTimeout(resolve, config.CLOCK));
-    }
-}
-
-/* 
-TODO:
-Single Agent: (OPTIONAL)
-- fix the problem with colliding with other agents and getting penalty ( sometimes it happens (we need to know why its only sometimes))
-- fix the problem with that if every other path is blocked then it doesn't move at all 
-- Modify the score function for the intention
-- EXPLORE : 
-    - for choosing the candidates: 
-        1- number of generating cells (or the ratio)
-        2- number of cells 
-        3- distance to the best delivery point (or top 3 delivery points)
-        4- distance to other chosen candidates 
-    - for scoring the candidates: 
-        1- top 3 criteria for choosing the candidates (which is the main score) 
-        2- path cost to the candidate
-        3- lastUpdate of the candidate 
-        4- number of agents seen near the candidate
-
-
-
-Multi Agent: (MANDATORY)
-- Communication between agents :
-    1- Exchange information about the environment
-    2- Exchange information about their mental states to coordinate their activities
-- Explicit a game strategy and coordination mechanisms
-    - Should figure it out later 
--       (suggestions: 
-        1- EXPLORE better (split the map / choose the candidates accordingly)
-        2- NO PATH for one Agent (so the other agent should take the parcels and deliver)
-        3- 
-        4- 
-        5- 
-        6- )
-
-
-PLANNING: (MANDATORY)
-- Decide to add it to Single Agent or Multi Agent
-- Where to add it and how to use it 
-- the implementation of the planning 
-
-
-
-*/
-
-
-
-
