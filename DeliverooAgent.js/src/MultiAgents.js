@@ -96,32 +96,103 @@ const deliveryCells = new Map();
  */
 const generatingCells = new Map();
 
-const COMM_DELAY = 50; // ms
+const COMM_DELAY = config.MOVEMENT_DURATION; // ms
 global.COMM_DELAY = COMM_DELAY;
 
-// Helper to serialize Maps to JSON
-function mapToObj(map) {
-    return Object.fromEntries(map);
-}
-
-setInterval(() => {
-    // Only send if the other agent is present in the map
-    if (!otherAgents.has(OTHER_AGENT_ID)) {
-        return; // Do nothing if the other agent is not present
-    }
-
-    // Prepare the data to send
-    const data = {
-        freeParcels: mapToObj(freeParcels),
-        otherAgents: mapToObj(otherAgents)
-    };
-    const message = JSON.stringify(data);
-
-    // Send to the other agent
-    client.emitSay(OTHER_AGENT_ID, message);
-}, COMM_DELAY);
 
 export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells}
+
+
+
+
+
+
+setInterval(() => {
+    // Prepare the data to send as plain objects
+    // Clone otherAgents and add/update our own agent info
+    const otherAgentsToSend = new Map(otherAgents);
+    
+    const isMoving = !Number.isInteger(me.x) || !Number.isInteger(me.y);
+    const direction = utils.getAgentDirection(me);
+    const occupiedCells = utils.getAgentOccupiedCells(me);
+    
+    otherAgentsToSend.set(MY_AGENT_ID, {
+        id: me.id,
+        x: me.x,
+        y: me.y,
+        lastUpdate: Date.now(),
+        isMoving: isMoving,
+        direction: direction,
+        occupiedCells: occupiedCells,
+        status: 'self'
+    });
+    const data = {
+        sendingFreeParcels: Object.fromEntries(freeParcels),
+        sendingOtherAgents: Object.fromEntries(otherAgentsToSend)
+    };
+    client.emitSay(OTHER_AGENT_ID, data);
+}, 100);
+
+
+client.onMsg((fromId, fromName, message, replyAck) => {
+    if (fromId !== OTHER_AGENT_ID) return; // Only process messages from the other agent
+
+    // Log the raw message for debugging
+    console.log('Raw message received:', message);
+
+    // Defensive: handle both string and object
+    let data;
+    if (typeof message === 'string') {
+        try {
+            data = JSON.parse(message);
+        } catch (e) {
+            console.error('Failed to parse message:', message);
+            return;
+        }
+    } else {
+        data = message;
+    }
+
+    // Handle both types of messages: deleteParcel and state sync
+    if (data && data.type === 'deleteParcel' && data.parcelId) {
+        freeParcels.delete(data.parcelId);
+        console.log(`Parcel ${data.parcelId} deleted by request from ${fromId}`);
+    } else if (data && (data.sendingFreeParcels || data.sendingOtherAgents)) {
+        // Convert received objects back to Maps (no helper needed)
+        const receivedFreeParcels = new Map(Object.entries(data.sendingFreeParcels || {}));
+        const receivedOtherAgents = new Map(Object.entries(data.sendingOtherAgents || {}));
+        console.log(`Received message from ${fromId}:`, {
+            freeParcels: receivedFreeParcels,
+            otherAgents: receivedOtherAgents
+        });
+        // Update freeParcels
+        for (const [id, receivedParcel] of receivedFreeParcels) {
+            const localParcel = freeParcels.get(id);
+            if (!localParcel || (receivedParcel.lastSeen > (localParcel.lastSeen || 0))) {
+                freeParcels.set(id, { ...localParcel, ...receivedParcel });
+            }
+        }
+
+        // Update otherAgents (except self)
+        for (const [id, receivedAgent] of receivedOtherAgents) {
+            if (id === MY_AGENT_ID) continue; // Skip self
+
+            const localAgent = otherAgents.get(id);
+            // Only update if received info is more recent
+            if (!localAgent || (receivedAgent.lastUpdate > (localAgent.lastUpdate || 0))) {
+                // Unblock old occupiedCells if present
+                if (localAgent && localAgent.occupiedCells) {
+                    utils.unblockAgentPositions(id, localAgent.occupiedCells);
+                }
+                otherAgents.set(id, { ...localAgent, ...receivedAgent });
+                // Block new occupiedCells if present
+                if (receivedAgent.occupiedCells) {
+                    utils.blockAgentPositions(id, receivedAgent.occupiedCells);
+                }
+            }
+        }
+    }
+});
 
 client.onMap((width, height, tiles) => {
     deliveryCells.clear();
@@ -143,7 +214,7 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.x = x
     me.y = y
     me.score = score
-    console.log('me', me);
+    // console.log('me', me);
 
     if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
         utils.findClosestDelivery(me.x, me.y);
@@ -247,12 +318,16 @@ client.onParcelsSensing(async (pp) => {
             !pp.find(p => p.id === parcel.id)
         ) {
             freeParcels.delete(id);
+            // Notify the other agent to delete this parcel
+            client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: id });
         }
     }
 
     for (const p of pp) {
         if (p.carriedBy === me.id && !carriedParcels.has(p.id)) {
             freeParcels.delete(p.id);
+            // Notify the other agent to delete this parcel
+            client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: p.id });
             carriedParcels.set(p.id, { id: p.id, reward: p.reward, lastUpdate: Date.now() });
         } else if (p.carriedBy === null) {
             // Update or add parcel, and set lastSeen
@@ -264,6 +339,8 @@ client.onParcelsSensing(async (pp) => {
                 lastSeen: Date.now()
             });
         } else {
+            // Notify the other agent to delete this parcel
+            client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: p.id });
             freeParcels.delete(p.id);
         }
     }
@@ -366,9 +443,9 @@ class IntentionRevision {
 
     // async push ( predicate ) { }
 
-    log ( ...args ) {
-        console.log( ...args )
-    }
+    // log ( ...args ) {
+    //     console.log( ...args )
+    // }
 
     async push(predicate) {
 
@@ -459,8 +536,8 @@ class Intention {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
-        else
-            console.log( ...args )
+        // else
+            // console.log( ...args )
     }
 
     updateIntention(predicate) {
@@ -554,8 +631,8 @@ class Plan {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
-        else
-            console.log( ...args )
+        // else
+        //     console.log( ...args )
     }
 
     // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
