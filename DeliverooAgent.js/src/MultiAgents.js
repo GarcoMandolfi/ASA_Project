@@ -6,9 +6,29 @@ const agentNumber = process.argv[2] || '1'; // Default to agent 1 if no argument
 const AGENT1_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIwNTE2NiIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAxIiwidGVhbUlkIjoiNWUxNmRlIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5Mzg1fQ.eyiEl2lqQ0ez1ZWdkRIz4QCJh-hZA6EFi3B-0Yp9Cg0'
 const AGENT2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU1ZTA0ZSIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAyIiwidGVhbUlkIjoiMmJmYmZiIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5MzkyfQ.TJ8TUSPjzaEP1Sq79ejqSxA33ZaH-fcf32goUuLLQHA'
 
+
 // Select token based on agent number
 const selectedToken = agentNumber === '1' ? AGENT1_TOKEN : AGENT2_TOKEN;
 console.log(`Starting agent ${agentNumber} with token: ${selectedToken.substring(0, 50)}...`);
+
+// Helper to extract agent id from JWT token
+function extractAgentId(token) {
+    const payload = token.split('.')[1];
+    const decoded = Buffer.from(payload, 'base64').toString('utf8');
+    return JSON.parse(decoded).id;
+}
+
+const AGENT1_ID = extractAgentId(AGENT1_TOKEN);
+const AGENT2_ID = extractAgentId(AGENT2_TOKEN);
+
+const MY_AGENT_ID = selectedToken === AGENT1_TOKEN ? AGENT1_ID : AGENT2_ID;
+const OTHER_AGENT_ID = selectedToken === AGENT1_TOKEN ? AGENT2_ID : AGENT1_ID;
+
+global.MY_AGENT_ID = MY_AGENT_ID;
+global.OTHER_AGENT_ID = OTHER_AGENT_ID;
+
+console.log('MY_AGENT_ID:', MY_AGENT_ID);
+console.log('OTHER_AGENT_ID:', OTHER_AGENT_ID);
 
 const client = new DeliverooApi(
     'http://localhost:8080',
@@ -85,6 +105,7 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.x = x
     me.y = y
     me.score = score
+    console.log('me', me);
 
     if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
         utils.findClosestDelivery(me.x, me.y);
