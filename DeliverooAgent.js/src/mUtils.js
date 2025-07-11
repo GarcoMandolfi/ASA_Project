@@ -441,11 +441,11 @@ function getScore ( predicate ) {
 
         const x = predicate[1];
         const y = predicate[2];
-        let deliveryDistance = predicate[4];
+        let deliveryPath = predicate[4];
         let deliveryReward = carriedValue();
-        if (deliveryDistance == null)   
+        if (deliveryPath == null)   
             return -2;
-        deliveryDistance = deliveryDistance.length;
+        let deliveryDistance = deliveryPath.length;
 
         const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;

@@ -193,10 +193,15 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
         console.log('drop_intention?', msg);
         const payload = msg.replace('drop_intention?', '');
         const [parcelId, theirScoreStr] = payload.split('|');
-        console.log('parcelId', parcelId);
-        console.log(theirScoreStr, "theirScoreStr");
+        // console.log('parcelId', parcelId);
+        // console.log(theirScoreStr, "theirScoreStr");
         const theirScore = parseFloat(theirScoreStr);
         const bestIntention = myAgent.intention_queue[0]?.predicate;
+        if (!bestIntention) {
+            console.log('bestIntention is undefined');
+            reply({ answer: 'no' });
+            return;
+        }
         if (!utils.stillValid(bestIntention)) {
             console.log('bestIntention is not valid');
             reply({ answer: 'no' });
@@ -213,9 +218,9 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
             // For now, reply 'no' if score >= 0, 'yes' if score < 0
             if (reply) {
                 if (myScore >= theirScore) {
-                    reply({ answer: 'no' }); // keep intention
+                    reply({ answer: 'yes' }); // keep intention
                 } else {
-                    reply({ answer: 'yes' }); // drop intention
+                    reply({ answer: 'no' }); // drop intention
                     myAgent.intention_queue.shift();
                 }
             }
@@ -508,11 +513,18 @@ class IntentionRevision {
             
                 // Current intention
                 const intention = this.intention_queue[0];
+                if (intention.predicate[0] == 'idle') {
+                    await intention.achieve()
+                    .catch( error => {
+                    } );
+                    this.intention_queue.shift();
+                    continue;
+                }
                 
                 // Is queued intention still valid? Do I still want to achieve it?
                 // TODO this hard-coded implementation is an example
                 let id = intention.predicate[3]
-                console.log(id, "id");
+                // console.log(id, "id");
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
                     this.intention_queue.shift();
@@ -523,7 +535,14 @@ class IntentionRevision {
                     if (otherAgents.has(OTHER_AGENT_ID)) {
                         let reply = await client.emitAsk(OTHER_AGENT_ID, `drop_intention?${id}|${utils.getScore(intention.predicate)}`);
                         if (reply && reply['answer'] === 'yes') {
+                            console.log('dropping intention cause said yesssss', intention.predicate[0]);
                             this.intention_queue.shift();
+                            assignedToOtherAgentParcels.add(id);
+                            let newbestintention = this.intention_queue[0];
+                            // console.log('newbestintention', newbestintention.predicate);
+                            generateOptions();
+                            newbestintention = this.intention_queue[0];
+                            console.log('newbestintention2', newbestintention.predicate);
                             continue;
                         }
                     }
@@ -535,7 +554,7 @@ class IntentionRevision {
                 } );
 
                 // Remove from the queue
-                this.intention_queue.shift();
+                    this.intention_queue.shift();
             }
             else {
                 generateOptions();

@@ -530,10 +530,10 @@ function stillValid (predicate) {
             return true;
         case 'idle':
             // If not carrying any parcels and there are no free parcels, remain idle
-            if (carriedParcels.size === 0 && freeParcels.size == 0)
-                return true;
-            return false;
-            // return true;
+            // if (carriedParcels.size === 0 && freeParcels.size == 0)
+            //     return true;
+            // return false;
+            return true;
         default:
             return false;
     }
