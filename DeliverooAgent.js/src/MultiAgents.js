@@ -22,7 +22,7 @@ also, now i want to also implement something that every time you recieved the me
 
 // Select token based on agent number
 const selectedToken = agentNumber === '1' ? AGENT1_TOKEN : AGENT2_TOKEN;
-console.log(`Starting agent ${agentNumber} with token: ${selectedToken.substring(0, 50)}...`);
+// console.log(`Starting agent ${agentNumber} with token: ${selectedToken.substring(0, 50)}...`);
 
 // Helper to extract agent id from JWT token
 function extractAgentId(token) {
@@ -40,8 +40,8 @@ const OTHER_AGENT_ID = selectedToken === AGENT1_TOKEN ? AGENT2_ID : AGENT1_ID;
 global.MY_AGENT_ID = MY_AGENT_ID;
 global.OTHER_AGENT_ID = OTHER_AGENT_ID;
 
-console.log('MY_AGENT_ID:', MY_AGENT_ID);
-console.log('OTHER_AGENT_ID:', OTHER_AGENT_ID);
+// console.log('MY_AGENT_ID:', MY_AGENT_ID);
+// console.log('OTHER_AGENT_ID:', OTHER_AGENT_ID);
 
 const client = new DeliverooApi(
     'http://localhost:8080',
@@ -58,7 +58,7 @@ client.onConfig(cfg => {
         
     }
 
-    console.log(config);
+    // console.log(config);
 
 });
 
@@ -68,7 +68,7 @@ client.onConfig(cfg => {
 const me = {id: null, name: null, x: null, y: null, score: null};
 
 /**
- * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number, lastSeen:number} > }
+ * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number, lastSeen:number, assignedAgent?: string} > }
  */
 const freeParcels = new Map();
 // #######################################################################################################################
@@ -100,12 +100,10 @@ const COMM_DELAY = config.MOVEMENT_DURATION; // ms
 global.COMM_DELAY = COMM_DELAY;
 
 
-export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells}
+export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID}
 
-
-
-
-
+// Declare myAgent globally to avoid scope issues
+let myAgent;
 
 setInterval(() => {
     // Prepare the data to send as plain objects
@@ -138,7 +136,7 @@ client.onMsg((fromId, fromName, message, replyAck) => {
     if (fromId !== OTHER_AGENT_ID) return; // Only process messages from the other agent
 
     // Log the raw message for debugging
-    console.log('Raw message received:', message);
+    // console.log('Raw message received:', message);
 
     // Defensive: handle both string and object
     let data;
@@ -156,15 +154,15 @@ client.onMsg((fromId, fromName, message, replyAck) => {
     // Handle both types of messages: deleteParcel and state sync
     if (data && data.type === 'deleteParcel' && data.parcelId) {
         freeParcels.delete(data.parcelId);
-        console.log(`Parcel ${data.parcelId} deleted by request from ${fromId}`);
+        // console.log(`Parcel ${data.parcelId} deleted by request from ${fromId}`);
     } else if (data && (data.sendingFreeParcels || data.sendingOtherAgents)) {
         // Convert received objects back to Maps (no helper needed)
         const receivedFreeParcels = new Map(Object.entries(data.sendingFreeParcels || {}));
         const receivedOtherAgents = new Map(Object.entries(data.sendingOtherAgents || {}));
-        console.log(`Received message from ${fromId}:`, {
-            freeParcels: receivedFreeParcels,
-            otherAgents: receivedOtherAgents
-        });
+        // console.log(`Received message from ${fromId}:`, {
+        //     freeParcels: receivedFreeParcels,
+        //     otherAgents: receivedOtherAgents
+        // });
         // Update freeParcels
         for (const [id, receivedParcel] of receivedFreeParcels) {
             const localParcel = freeParcels.get(id);
@@ -189,6 +187,16 @@ client.onMsg((fromId, fromName, message, replyAck) => {
                 if (receivedAgent.occupiedCells) {
                     utils.blockAgentPositions(id, receivedAgent.occupiedCells);
                 }
+            }
+        }
+    } else if (data && data.type === 'pick_up_parcels' && Array.isArray(data.parcelIds)) {
+        // console.log('Received instruction to pick up specific parcels');
+        // Received instruction to pick up specific parcels
+        for (const parcelId of data.parcelIds) {
+            const parcel = freeParcels.get(parcelId);
+            if (parcel) {
+                // Push a pick up intention for each parcel
+                myAgent.push(['go_pick_up', parcel.x, parcel.y, parcel.id, utils.getShortestPath(me.x, me.y, parcel.x, parcel.y).path]);
             }
         }
     }
@@ -313,6 +321,11 @@ client.onParcelsSensing(async (pp) => {
     carriedParcels.clear();
 
     for (const [id, parcel] of freeParcels) {
+        // Remove parcels assigned to another agent
+        if (parcel.assignedAgent && parcel.assignedAgent !== me.id) {
+            freeParcels.delete(id);
+            continue;
+        }
         if (
             utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE &&
             !pp.find(p => p.id === parcel.id)
@@ -329,14 +342,15 @@ client.onParcelsSensing(async (pp) => {
             // Notify the other agent to delete this parcel
             client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: p.id });
             carriedParcels.set(p.id, { id: p.id, reward: p.reward, lastUpdate: Date.now() });
-        } else if (p.carriedBy === null) {
+        } else if (p.carriedBy === null ) {
             // Update or add parcel, and set lastSeen
             let existing = freeParcels.get(p.id) || {};
             freeParcels.set(p.id, {
                 ...existing,
                 ...p,
                 lastUpdate: Date.now(), // or keep your logic for lastUpdate
-                lastSeen: Date.now()
+                lastSeen: Date.now(),
+                
             });
         } else {
             // Notify the other agent to delete this parcel
@@ -359,9 +373,47 @@ function generateOptions () {
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
         const bestDelivery = utils.findClosestDelivery(me.x, me.y);
-        if (bestDelivery) {
+        if (bestDelivery && bestDelivery.path) {
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
             best_distance = bestDelivery.distance;
+        } else {
+            // console.log('No delivery possible, trying to deliver to other agent');
+            // No delivery possible, try to deliver to other agent
+            // Find the other agent's position
+            const other = otherAgents.get(OTHER_AGENT_ID);
+            if (other && other.x !== undefined && other.y !== undefined) {
+                // console.log('Other agent found');
+                // Find a valid adjacent position to the other agent
+                const adjacentPositions = [
+                    {x: other.x - 1, y: other.y}, // left
+                    {x: other.x + 1, y: other.y}, // right
+                    {x: other.x, y: other.y - 1}, // down
+                    {x: other.x, y: other.y + 1}  // up
+                ];
+                
+                let deliveryNeighbour = {x: other.x, y: other.y}; // fallback to agent position
+                for (const pos of adjacentPositions) {
+                    const nodeId = "(" + pos.x + "," + pos.y + ")";
+                    if (global.graph.has(nodeId)) {
+                        if (utils.getShortestPath(me.x, me.y, pos.x, pos.y).path) {
+                            deliveryNeighbour = pos;
+                            break;
+                        }
+                    }
+                }
+                const pathToOther = utils.getShortestPath(me.x, me.y, deliveryNeighbour.x, deliveryNeighbour.y);
+                // console.log('Path to other agent', pathToOther);
+                // console.log('graph', global.graph);
+                // console.log('me', me);
+                // console.log('other', other);
+                if (pathToOther && pathToOther.path) {
+                    // console.log('Deliver to other agent found');
+                    best_option = ['go_deliver_agent', other.x, other.y, pathToOther.path];
+                    best_distance = pathToOther.cost;
+                    // console.log('Deliver to other agent found', best_option);
+                    // console.log('best_distance', best_distance);
+                }
+            }
         }
     }
 
@@ -380,6 +432,7 @@ function generateOptions () {
     }
     // Push the best option found
     if (best_option !== null && best_distance !== null) {
+        // console.log('Pushing best option', best_option);
         myAgent.push(best_option);
     }
     else {
@@ -411,6 +464,7 @@ class IntentionRevision {
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
+                // console.log('Intention queue', this.intention_queue);
             
                 // Current intention
                 const intention = this.intention_queue[0];
@@ -454,26 +508,31 @@ class IntentionRevision {
         // Find existing index with same id (only for go_pick_up)
         // Check if already queued
         const last = this.intention_queue[this.intention_queue.length - 1];
+        // console.log('Last intention', last);
+        // console.log('Predicate', predicate);
         
         if ( last && last.predicate.slice(0, 3).join(' ') == predicate.slice(0, 3).join(' ') ) {
             return; // intention is already being achieved
         }
-
+        // console.log('Predicate after achieved removed', predicate);    
         // Check if there is already an intention with the same first 4 elements
         if (this.intention_queue.some(i =>
             i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ')
         )) {
             return;
         }
+        // console.log('Predicate after  same 4 achieved removed', predicate);    
 
         // This is a reference to the actual object in the queue, not a copy
         let existingIntention = this.intention_queue.find(i => {
             return i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ');
         });
+        // console.log('Existing intention', existingIntention);
         if (existingIntention && existingIntention.predicate[0] != "idle")
             existingIntention.updateIntention(predicate);
-        
+        // console.log('Existing intention after update', existingIntention);
         const intention = new Intention( this, predicate );
+        // console.log('Intention', intention.predicate);
         this.intention_queue.push( intention );
         let i = intention.predicate;
 
@@ -489,10 +548,6 @@ class IntentionRevision {
         }
     }
 }
-
-
-const myAgent = new IntentionRevision();
-myAgent.loop();
 
 
 class Intention {
@@ -548,6 +603,9 @@ class Intention {
                 break;
             case "go_deliver":
                 this.predicate[3] = predicate[3];
+                break;
+            case "go_deliver_agent":
+                this.predicate[3] = predicate[3]; // path
                 break;
             default:
                 return false;
@@ -826,8 +884,85 @@ class IdleMove extends Plan {
     }
 }
 
+class GoDeliverAgent extends Plan {
+    static isApplicableTo(go_deliver_agent, x, y, path) {
+        return go_deliver_agent == 'go_deliver_agent';
+    }
+
+    async execute(go_deliver_agent, x, y, path) {
+        // console.log('Go deliver agent');
+        if (this.stopped) throw ['stopped']; // if stopped then quit
+        await this.subIntention(['go_to', x, y, path]);
+        if (this.stopped) throw ['stopped']; // if stopped then quit
+        // Check distance to OTHER_AGENT_ID only
+        const other = otherAgents.get(OTHER_AGENT_ID);
+        if (other && other.x !== undefined && other.y !== undefined) {
+            const dist = utils.manhattanDistance(me, other);
+            if (dist <= 4) {
+                const parcelsToPick = Array.from(carriedParcels.keys());
+                await client.emitPutdown();
+                // console.log('Putdown parcels');
+                // After putdown, assign these parcels to the other agent
+                for (const parcelId of parcelsToPick) {
+                    let parcel = freeParcels.get(parcelId);
+                    if (parcel) {
+                        parcel.assignedAgent = OTHER_AGENT_ID;
+                        freeParcels.set(parcelId, parcel);
+                    }
+                }
+                // Send message to other agent to pick up these parcels
+                client.emitSay(OTHER_AGENT_ID, {
+                    type: 'pick_up_parcels',
+                    parcelIds: parcelsToPick
+                });
+                // Move away from the drop location (try to move to a neighboring free cell)
+                const directions = ['up', 'down', 'left', 'right'];
+                for (const dir of directions) {
+                    let targetX = me.x, targetY = me.y;
+                    if (dir === 'up') targetY++;
+                    else if (dir === 'down') targetY--;
+                    else if (dir === 'left') targetX--;
+                    else if (dir === 'right') targetX++;
+                    // Check if the target cell is free in the graph
+                    const currentNodeId = '(' + me.x + ',' + me.y + ')';
+                    const targetNodeId = '(' + targetX + ',' + targetY + ')';
+                    if (
+                        global.graph &&
+                        global.graph.has(currentNodeId) &&
+                        global.graph.has(targetNodeId) &&
+                        global.graph.get(currentNodeId).has(targetNodeId)
+                    ) {
+                        // Try to move
+                        let moveResult = null;
+                        switch (dir) {
+                            case 'up': moveResult = await client.emitMove('up'); break;
+                            case 'down': moveResult = await client.emitMove('down'); break;
+                            case 'left': moveResult = await client.emitMove('left'); break;
+                            case 'right': moveResult = await client.emitMove('right'); break;
+                        }
+                        if (moveResult) {
+                            me.x = moveResult.x;
+                            me.y = moveResult.y;
+                            break;
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+        // If not within distance, just putdown anyway
+        await client.emitPutdown();
+        return true;
+    }
+}
+
 // plan classes are added to plan library 
 planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
 planLibrary.push( IdleMove )
+planLibrary.push( GoDeliverAgent )
+
+// Initialize the agent after all classes are defined
+myAgent = new IntentionRevision();
+myAgent.loop();

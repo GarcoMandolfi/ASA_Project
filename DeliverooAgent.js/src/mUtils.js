@@ -1,4 +1,4 @@
-import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells} from "./MultiAgents.js";
+import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID} from "./MultiAgents.js";
 
 
 
@@ -527,6 +527,12 @@ function stillValid (predicate) {
             // let deliveryPath = predicate[4];
             if (carriedParcels.size == 0 /*|| deliveryPath.isPathValid === false*/)
                 return false;
+            return true;
+        case 'go_deliver_agent':
+            // Check if we're still carrying parcels and the other agent is still available
+            if (carriedParcels.size == 0) return false;
+            const other = otherAgents.get(OTHER_AGENT_ID);
+            if (!other || other.x === undefined || other.y === undefined) return false;
             return true;
         case 'idle':
             // If not carrying any parcels and there are no free parcels, remain idle
