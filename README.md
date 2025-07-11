@@ -36,3 +36,23 @@ PLANNING: (MANDATORY)
 - Decide to add it to Single Agent or Multi Agent
 - Where to add it and how to use it 
 - the implementation of the planning 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+CONCERNS: 
+SINGLE AND MULTI AGENT: 
+1- no way parcels
+
+Multi: 
+1- assignedtootheragent memory size 
