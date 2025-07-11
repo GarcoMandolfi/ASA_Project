@@ -270,7 +270,7 @@ class IntentionRevision {
                 
                 // Is queued intention still valid? Do I still want to achieve it?
                 // TODO this hard-coded implementation is an example
-                let id = intention.predicate[2]
+                let id = intention.predicate[3]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
                     this.intention_queue.shift();

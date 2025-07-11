@@ -190,11 +190,15 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
 
     // Handle drop_intention? requests
     if (typeof msg === 'string' && msg.startsWith('drop_intention?')) {
+        console.log('drop_intention?', msg);
         const payload = msg.replace('drop_intention?', '');
         const [parcelId, theirScoreStr] = payload.split('|');
+        console.log('parcelId', parcelId);
+        console.log(theirScoreStr, "theirScoreStr");
         const theirScore = parseFloat(theirScoreStr);
         const bestIntention = myAgent.intention_queue[0]?.predicate;
         if (!utils.stillValid(bestIntention)) {
+            console.log('bestIntention is not valid');
             reply({ answer: 'no' });
             return;
         }
@@ -204,6 +208,8 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
             bestIntention[3] === parcelId
         ) {
             const myScore = utils.getScore(bestIntention);
+            console.log('myScore', myScore);
+            console.log('theirScore', theirScore);
             // For now, reply 'no' if score >= 0, 'yes' if score < 0
             if (reply) {
                 if (myScore >= theirScore) {
@@ -214,6 +220,8 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
                 }
             }
         } else {
+            console.log('bestIntention is not a go_pick_up');
+            console.log(bestIntention);
             reply({ answer: 'no' });
         }
         return;
@@ -503,20 +511,23 @@ class IntentionRevision {
                 
                 // Is queued intention still valid? Do I still want to achieve it?
                 // TODO this hard-coded implementation is an example
-                let id = intention.predicate[2]
+                let id = intention.predicate[3]
+                console.log(id, "id");
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
                     this.intention_queue.shift();
                     continue;
                 }
                 
-                // if (intention.predicate[0] == 'go_pick_up') {
-                //     let reply = await client.emitAsk(OTHER_AGENT_ID, `drop_intention?${id}|${utils.getScore(intention.predicate)}`);
-                //     if (reply && reply['answer'] === 'yes') {
-                //         this.intention_queue.shift();
-                //         continue;
-                //     }
-                // }
+                if (intention.predicate[0] == 'go_pick_up') {
+                    if (otherAgents.has(OTHER_AGENT_ID)) {
+                        let reply = await client.emitAsk(OTHER_AGENT_ID, `drop_intention?${id}|${utils.getScore(intention.predicate)}`);
+                        if (reply && reply['answer'] === 'yes') {
+                            this.intention_queue.shift();
+                            continue;
+                        }
+                    }
+                }
                 // Start achieving intention
                 await intention.achieve()
                 // Catch eventual error and continue
