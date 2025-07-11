@@ -446,8 +446,7 @@ function getScore ( predicate ) {
         if (deliveryPath == null)   
             return -2;
         let deliveryDistance = deliveryPath.length;
-
-        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50 : config.PARCEL_DECADING_INTERVAL;
+        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50000 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
         const steps = deliveryDistance / (config.MOVEMENT_STEPS || 1);
         const deliveryTime = steps * moveDuration;
@@ -462,7 +461,7 @@ function getScore ( predicate ) {
         let score = deliveryReward - overallDecay;
 
         score = Math.max(score, 0);
-
+        console.log('delivery score', score);
         return score;
     }
 
@@ -483,16 +482,20 @@ function getScore ( predicate ) {
         const lastUpdate = p.lastUpdate;
         const timeSinceSeen = Date.now() - lastUpdate;
         const decayInterval = (!isFinite(config.PARCEL_DECADING_INTERVAL) || !config.PARCEL_DECADING_INTERVAL)
-            ? 50 : config.PARCEL_DECADING_INTERVAL;
+            ? 50000 : config.PARCEL_DECADING_INTERVAL;
+        console.log('parceldecayinterval', config.PARCEL_DECADING_INTERVAL);
+
+        console.log('decayInterval', decayInterval);
         const decaySteps = Math.floor(timeSinceSeen / decayInterval);
 
         const moveDuration = config.MOVEMENT_DURATION || 200;
         const steps = pickupDistance / (config.MOVEMENT_STEPS || 1);
         const pickupTime = steps * moveDuration;
         const expectedDecay = pickupTime / decayInterval;
-
+        
         const rewardEstimate = reward - decaySteps - expectedDecay;
         let score = Math.max(rewardEstimate, 0);
+        console.log('pickup score', score);
         return score;
     }
 
@@ -537,10 +540,10 @@ function stillValid (predicate) {
             return true;
         case 'idle':
             // If not carrying any parcels and there are no free parcels, remain idle
-            if (carriedParcels.size === 0 && freeParcels.size == 0)
-                return true;
-            return false;
-            // return true;
+            // if (carriedParcels.size === 0 && freeParcels.size == 0)
+            //     return true;
+            // return false;
+            return true;
         default:
             return false;
     }

@@ -447,7 +447,7 @@ function getScore ( predicate ) {
             return -2;
         let deliveryDistance = deliveryPath.length;
 
-        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50 : config.PARCEL_DECADING_INTERVAL;
+        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50000 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
         const steps = deliveryDistance / (config.MOVEMENT_STEPS || 1);
         const deliveryTime = steps * moveDuration;
@@ -485,7 +485,7 @@ function getScore ( predicate ) {
         const timeSinceSeen = Date.now() - lastUpdate;
         const decaySteps = Math.floor(timeSinceSeen / config.PARCEL_DECADING_INTERVAL);
 
-        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50 : config.PARCEL_DECADING_INTERVAL;
+        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50000 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
         const steps = pickupDistance / (config.MOVEMENT_STEPS || 1);
         const pickupTime = steps * moveDuration;
