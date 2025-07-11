@@ -53,6 +53,8 @@ PLANNING: (MANDATORY)
 CONCERNS: 
 SINGLE AND MULTI AGENT: 
 1- getScore is WRONG
+2- maybe we should comment these         // if ( this.stopped ) throw ['stopped']; // if stopped then quit at the end of goDeliver and goPickup
+
 
 Multi: 
 1- assignedtootheragent memory size 

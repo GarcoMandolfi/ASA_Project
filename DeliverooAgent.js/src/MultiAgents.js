@@ -221,8 +221,10 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
                     reply({ answer: 'yes' }); // keep intention
                 } else {
                     reply({ answer: 'no' }); // drop intention
-                    myAgent.intention_queue.shift();
-                    // assignedToOtherAgentParcels.add(parcelId);
+                    // myAgent.intention_queue.shift();
+                    assignedToOtherAgentParcels.add(parcelId);
+                    console.log('assignedToOtherAgentParcels', assignedToOtherAgentParcels);
+                    console.log('freeParcels id', freeParcels);
                 }
             }
         } else {
@@ -533,17 +535,20 @@ class IntentionRevision {
                 }
                 
                 if (intention.predicate[0] == 'go_pick_up') {
-                    if (otherAgents.has(OTHER_AGENT_ID)) {
+                    if (otherAgents.has(OTHER_AGENT_ID) && MY_AGENT_ID !== AGENT1_ID) {
                         let reply = await client.emitAsk(OTHER_AGENT_ID, `drop_intention?${id}|${utils.getScore(intention.predicate)}`);
                         if (reply && reply['answer'] === 'yes') {
                             console.log('dropping intention cause said yesssss', intention.predicate[0]);
                             this.intention_queue.shift();
-                            // assignedToOtherAgentParcels.add(id);
-                            let newbestintention = this.intention_queue[0];
-                            // console.log('newbestintention', newbestintention.predicate);
-                            generateOptions();
-                            newbestintention = this.intention_queue[0];
-                            console.log('newbestintention2', newbestintention.predicate);
+                            assignedToOtherAgentParcels.add(id);
+                            console.log('assignedToOtherAgentParcels', assignedToOtherAgentParcels);
+                            console.log('freeParcels id', freeParcels);
+
+                            // let newbestintention = this.intention_queue[0];
+                            // // console.log('newbestintention', newbestintention.predicate);
+                            // generateOptions();
+                            // newbestintention = this.intention_queue[0];
+                            // console.log('newbestintention2', newbestintention.predicate);
                             continue;
                         }
                     }
@@ -661,8 +666,8 @@ class Intention {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
-        // else
-            // console.log( ...args )
+        else
+            console.log( ...args )
     }
 
     updateIntention(predicate) {
@@ -759,8 +764,8 @@ class Plan {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
-        // else
-        //     console.log( ...args )
+        else
+            console.log( ...args )
     }
 
     // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
@@ -785,7 +790,7 @@ class GoPickUp extends Plan {
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.emitPickup()
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        // if ( this.stopped ) throw ['stopped']; // if stopped then quit
         return true;
     }
 
@@ -802,7 +807,7 @@ class GoDeliver extends Plan {
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.emitPutdown()
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        // if ( this.stopped ) throw ['stopped']; // if stopped then quit
         return true;
     }
 

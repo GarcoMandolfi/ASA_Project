@@ -443,8 +443,8 @@ function getScore ( predicate ) {
         const y = predicate[2];
         let deliveryPath = predicate[3];
         let deliveryReward = carriedValue();
-        console.log('it never reaches here');
-        console.log('deliveryPath', deliveryPath);
+        // console.log('it never reaches here');
+        // console.log('deliveryPath', deliveryPath);
         if (deliveryPath == null)   
             return -2;
         let deliveryDistance = deliveryPath.length;
@@ -473,7 +473,7 @@ function getScore ( predicate ) {
         const y = predicate[2];
 
         let pickupPath = predicate[4];
-        if (!pickupPath || typeof pickupPath.length !== 'number' || isNaN(pickupPath.length)) {
+        if (!pickupPath ) {
             return -2;
         }
         let pickupDistance = pickupPath.length;
