@@ -52,7 +52,8 @@ PLANNING: (MANDATORY)
 
 CONCERNS: 
 SINGLE AND MULTI AGENT: 
-1- no way parcels
+1- getScore is WRONG
 
 Multi: 
 1- assignedtootheragent memory size 
+2- ask pick up is buggy 

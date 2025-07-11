@@ -462,7 +462,7 @@ function getScore ( predicate ) {
 
         let score = deliveryReward - overallDecay;
 
-        score = Math.max(score, 0);
+        // score = Math.max(score, 0);
         console.log('delivery score', score);
         return score;
     }
@@ -496,7 +496,8 @@ function getScore ( predicate ) {
         const expectedDecay = pickupTime / decayInterval;
         
         const rewardEstimate = reward - decaySteps - expectedDecay;
-        let score = Math.max(rewardEstimate, 0);
+        let score = rewardEstimate;
+        // let score = Math.max(rewardEstimate, 0);
         console.log('pickup score', score);
         return score;
     }
