@@ -202,11 +202,11 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
             reply({ answer: 'no' });
             return;
         }
-        if (!utils.stillValid(bestIntention)) {
-            console.log('bestIntention is not valid');
-            reply({ answer: 'no' });
-            return;
-        }
+        // if (!utils.stillValid(bestIntention)) {
+        //     console.log('bestIntention is not valid');
+        //     reply({ answer: 'no' });
+        //     return;
+        // }
         if (
             bestIntention &&
             bestIntention[0] === 'go_pick_up' &&
@@ -222,6 +222,7 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
                 } else {
                     reply({ answer: 'no' }); // drop intention
                     myAgent.intention_queue.shift();
+                    // assignedToOtherAgentParcels.add(parcelId);
                 }
             }
         } else {
@@ -537,7 +538,7 @@ class IntentionRevision {
                         if (reply && reply['answer'] === 'yes') {
                             console.log('dropping intention cause said yesssss', intention.predicate[0]);
                             this.intention_queue.shift();
-                            assignedToOtherAgentParcels.add(id);
+                            // assignedToOtherAgentParcels.add(id);
                             let newbestintention = this.intention_queue[0];
                             // console.log('newbestintention', newbestintention.predicate);
                             generateOptions();

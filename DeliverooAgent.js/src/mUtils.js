@@ -441,8 +441,10 @@ function getScore ( predicate ) {
 
         const x = predicate[1];
         const y = predicate[2];
-        let deliveryPath = predicate[4];
+        let deliveryPath = predicate[3];
         let deliveryReward = carriedValue();
+        console.log('it never reaches here');
+        console.log('deliveryPath', deliveryPath);
         if (deliveryPath == null)   
             return -2;
         let deliveryDistance = deliveryPath.length;
