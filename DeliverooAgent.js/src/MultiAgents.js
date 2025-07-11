@@ -10,13 +10,9 @@ const AGENT2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU1ZTA0ZSIsI
 
 /*
 
-also, now i want to also implement something that every time you recieved the message from the other agent( with that id) ,
- first decode it and make 2 variables called recieved freeParcells and received otherAgents, decode the message info to them.
-  then you should do two loops for freeparcels and otheragents. and check the lastseens. for freeParcels if the recieved data's 
-  last seen was higher ( it seen more recently) then update the value of the 
-  corresponding parcel in our freeparcel with the recieved ones.
-   and for otheragents, except  for our own agent, (can be checked by id) update information about other agents as well
-   ( and ofcource if nesessary it should handle the occupiedcells and block , unblock graphs.) 
+remember to uncooment if (intention.predicate[0] == 'go_pick_up') { 
+and  if (typeof msg === 'string' && msg.startsWith('drop_intention?')) {
+and 
 */ 
 
 
@@ -101,10 +97,11 @@ const deliveryCells = new Map();
 const generatingCells = new Map();
 
 const COMM_DELAY = config.MOVEMENT_DURATION; // ms
+const UPDATE_THRESHOLD = 100; // ms - minimum time difference for updates
 global.COMM_DELAY = COMM_DELAY;
 
 
-export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID}
+export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID, assignedToOtherAgentParcels}
 
 // Declare myAgent globally to avoid scope issues
 let myAgent;
@@ -163,7 +160,7 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
         // Update freeParcels
         for (const [id, receivedParcel] of receivedFreeParcels) {
             const localParcel = freeParcels.get(id);
-            if (!localParcel || (receivedParcel.lastSeen > (localParcel.lastSeen || 0))) {
+            if (!localParcel || (receivedParcel.lastSeen > (localParcel.lastSeen || 0) + UPDATE_THRESHOLD) && !assignedToOtherAgentParcels.has(id)) {
                 freeParcels.set(id, { ...localParcel, ...receivedParcel });
             }
         }
@@ -173,8 +170,8 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
             if (id === MY_AGENT_ID) continue; // Skip self
             // console.log('receivedOtherAgents', receivedOtherAgents);
             const localAgent = otherAgents.get(id);
-            // Only update if received info is more recent
-            if (!localAgent || (receivedAgent.lastUpdate > (localAgent.lastUpdate || 0))) {
+            // Only update if received info is more recent by at least the threshold
+            if (!localAgent || (receivedAgent.lastUpdate > (localAgent.lastUpdate || 0) + UPDATE_THRESHOLD)) {
                 // Unblock old occupiedCells if present
                 if (localAgent && localAgent.occupiedCells) {
                     utils.unblockAgentPositions(id, localAgent.occupiedCells);
@@ -219,17 +216,23 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
             if (reply) {
                 if (myScore >= theirScore) {
                     reply({ answer: 'yes' }); // keep intention
+                    console.log('keeping intention');
+                    console.log('assignedToOtherAgentParcels', assignedToOtherAgentParcels);
+                    console.log('freeParcels keeping', freeParcels);
                 } else {
                     reply({ answer: 'no' }); // drop intention
                     // myAgent.intention_queue.shift();
                     assignedToOtherAgentParcels.add(parcelId);
+                    console.log('nooooot keeping');
                     console.log('assignedToOtherAgentParcels', assignedToOtherAgentParcels);
-                    console.log('freeParcels id', freeParcels);
+                    console.log('freeParcels deleting', freeParcels);
                 }
             }
         } else {
             console.log('bestIntention is not a go_pick_up');
             console.log(bestIntention);
+            console.log('assignedToOtherAgentParcels', assignedToOtherAgentParcels);
+            console.log('freeParcels', freeParcels);
             reply({ answer: 'no' });
         }
         return;
@@ -365,6 +368,7 @@ client.onParcelsSensing(async (pp) => {
             !pp.find(p => p.id === parcel.id)
         ) {
             freeParcels.delete(id);
+            console.log("someone took this parcel", id);
             // Notify the other agent to delete this parcel
             client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: id });
         }
@@ -376,16 +380,22 @@ client.onParcelsSensing(async (pp) => {
             // Notify the other agent to delete this parcel
             client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: p.id });
             carriedParcels.set(p.id, { id: p.id, reward: p.reward, lastUpdate: Date.now() });
-        } else if (p.carriedBy === null && !assignedToOtherAgentParcels.has(p.id)) {
+        } else if (p.carriedBy === null) {
             // Update or add parcel, and set lastSeen
+            // Note: We add ALL free parcels to freeParcels, regardless of assignment
+            // The assignment check happens in generateOptions when deciding what to pick up
 
             let existing = freeParcels.get(p.id);
-            freeParcels.set(p.id, {
-                ...(existing || {}),
-                ...p,
-                lastUpdate: Date.now(), // or keep your logic for lastUpdate
-                lastSeen: Date.now(),
-            });
+            const now = Date.now();
+            // Only update if this is a new parcel or if enough time has passed since last update
+            if (!existing || (now - existing.lastUpdate > UPDATE_THRESHOLD)) {
+                freeParcels.set(p.id, {
+                    ...(existing || {}),
+                    ...p,
+                    lastUpdate: now,
+                    lastSeen: now,
+                });
+            }
         } else {
             // Notify the other agent to delete this parcel
             client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: p.id });
@@ -551,6 +561,11 @@ class IntentionRevision {
                             // console.log('newbestintention2', newbestintention.predicate);
                             continue;
                         }
+                        if (reply && reply['answer'] === 'no') {
+                            console.log('NOT dropping intention cause said noooooo', intention.predicate[0]);
+                            console.log('assignedToOtherAgentParcels', assignedToOtherAgentParcels);
+                            console.log('freeParcels id', freeParcels);
+                        }
                     }
                 }
                 // Start achieving intention
@@ -666,8 +681,8 @@ class Intention {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
-        else
-            console.log( ...args )
+        // else
+        //     console.log( ...args )
     }
 
     updateIntention(predicate) {
@@ -702,6 +717,9 @@ class Intention {
 
         // Trying all plans in the library
         for (const planClass of planLibrary) {
+            // console.log('Date.now()', Date.now());
+            // console.log(freeParcels, 'freeParcels');
+            // console.log(assignedToOtherAgentParcels, 'assignedToOtherAgentParcels');
 
             // if stopped then quit
             if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
@@ -764,8 +782,8 @@ class Plan {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
-        else
-            console.log( ...args )
+        // else
+        //     console.log( ...args )
     }
 
     // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.

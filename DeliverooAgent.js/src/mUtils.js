@@ -1,4 +1,4 @@
-import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID} from "./MultiAgents.js";
+import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID, assignedToOtherAgentParcels} from "./MultiAgents.js";
 
 
 
@@ -463,7 +463,8 @@ function getScore ( predicate ) {
         let score = deliveryReward - overallDecay;
 
         // score = Math.max(score, 0);
-        console.log('delivery score', score);
+        // console.log('delivery score', score);
+        // console.log('Date.now()', Date.now());
         return score;
     }
 
@@ -485,9 +486,9 @@ function getScore ( predicate ) {
         const timeSinceSeen = Date.now() - lastUpdate;
         const decayInterval = (!isFinite(config.PARCEL_DECADING_INTERVAL) || !config.PARCEL_DECADING_INTERVAL)
             ? 50000 : config.PARCEL_DECADING_INTERVAL;
-        console.log('parceldecayinterval', config.PARCEL_DECADING_INTERVAL);
+        // console.log('parceldecayinterval', config.PARCEL_DECADING_INTERVAL);
 
-        console.log('decayInterval', decayInterval);
+        // console.log('decayInterval', decayInterval);
         const decaySteps = Math.floor(timeSinceSeen / decayInterval);
 
         const moveDuration = config.MOVEMENT_DURATION || 200;
@@ -498,7 +499,8 @@ function getScore ( predicate ) {
         const rewardEstimate = reward - decaySteps - expectedDecay;
         let score = rewardEstimate;
         // let score = Math.max(rewardEstimate, 0);
-        console.log('pickup score', score);
+        // console.log('pickup score', score);
+        // console.log('Date.now()', Date.now());
         return score;
     }
 
@@ -528,7 +530,7 @@ function stillValid (predicate) {
             let id = predicate[3];
             let p = freeParcels.get(id);
             let pickupPath = predicate[4];
-            if (p && p.carriedBy || p && pickupPath === null) return false;
+            if (p && p.carriedBy || p && pickupPath === null || assignedToOtherAgentParcels.has(id)) return false;
             return true;
         case 'go_deliver':
             // let deliveryPath = predicate[4];
