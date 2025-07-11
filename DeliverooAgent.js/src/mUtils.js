@@ -445,7 +445,7 @@ function getScore ( predicate ) {
         let deliveryReward = carriedValue();
         if (deliveryDistance == null)   
             return -2;
-        deliveryDistance = deliveryDistance.size;
+        deliveryDistance = deliveryDistance.length;
 
         const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
@@ -461,7 +461,7 @@ function getScore ( predicate ) {
 
         let score = deliveryReward - overallDecay;
 
-        // score = Math.max(score, 0);
+        score = Math.max(score, 0);
 
         return score;
     }
@@ -471,36 +471,37 @@ function getScore ( predicate ) {
         const x = predicate[1];
         const y = predicate[2];
 
-        let pickupDistance = predicate[4];
-        if (pickupDistance == null)
-        {
+        let pickupPath = predicate[4];
+        if (!pickupPath || typeof pickupPath.length !== 'number' || isNaN(pickupPath.length)) {
             return -2;
         }
-        pickupDistance = predicate[4].size;
+        let pickupDistance = pickupPath.length;
 
         const p = freeParcels.get(predicate[3]);
-        if (!p) return;
+        if (!p || typeof p.reward !== 'number' || typeof p.lastUpdate !== 'number') return -2;
         const reward = p.reward;
         const lastUpdate = p.lastUpdate;
         const timeSinceSeen = Date.now() - lastUpdate;
-        const decaySteps = Math.floor(timeSinceSeen / config.PARCEL_DECADING_INTERVAL);
+        const decayInterval = (!isFinite(config.PARCEL_DECADING_INTERVAL) || !config.PARCEL_DECADING_INTERVAL)
+            ? 50 : config.PARCEL_DECADING_INTERVAL;
+        const decaySteps = Math.floor(timeSinceSeen / decayInterval);
 
-        const decayInterval = !isFinite(config.PARCEL_DECADING_INTERVAL) ? 50 : config.PARCEL_DECADING_INTERVAL;
         const moveDuration = config.MOVEMENT_DURATION || 200;
         const steps = pickupDistance / (config.MOVEMENT_STEPS || 1);
         const pickupTime = steps * moveDuration;
         const expectedDecay = pickupTime / decayInterval;
 
         const rewardEstimate = reward - decaySteps - expectedDecay;
-        const score = rewardEstimate;
-
-        // const score = Math.max(rewardEstimate, 0); // +1 to avoid division by zero
+        let score = Math.max(rewardEstimate, 0);
         return score;
     }
 
     if (type === 'idle')
     {
         return -1;
+    }
+    if (type === 'go_deliver_agent') {
+        return 0;
     }
 
     return 0;

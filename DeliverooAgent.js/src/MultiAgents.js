@@ -72,9 +72,9 @@ const me = {id: null, name: null, x: null, y: null, score: null};
  */
 const freeParcels = new Map();
 /**
- * @type { Map< string, {id: string} > }
+ * @type { Set<string> }
  */
-const assignedToOtherAgentParcels = new Map();
+const assignedToOtherAgentParcels = new Set();
 // #######################################################################################################################
 // CHECK CARRIED BY
 //##########################################################################################################################
@@ -136,37 +136,30 @@ setInterval(() => {
 }, 100);
 
 
-client.onMsg((fromId, fromName, message, replyAck) => {
+client.onMsg(async (fromId, fromName, msg, reply) => {
     if (fromId !== OTHER_AGENT_ID) return; // Only process messages from the other agent
-
-    // Log the raw message for debugging
-    // console.log('Raw message received:', message);
 
     // Defensive: handle both string and object
     let data;
-    if (typeof message === 'string') {
+    if (typeof msg === 'string' && (msg.trim().startsWith('{') || msg.trim().startsWith('['))) {
         try {
-            data = JSON.parse(message);
+            data = JSON.parse(msg);
         } catch (e) {
-            console.error('Failed to parse message:', message);
+            console.error('Failed to parse message:', msg);
             return;
         }
     } else {
-        data = message;
+        data = msg;
     }
 
     // Handle both types of messages: deleteParcel and state sync
     if (data && data.type === 'deleteParcel' && data.parcelId) {
         freeParcels.delete(data.parcelId);
-        // console.log(`Parcel ${data.parcelId} deleted by request from ${fromId}`);
     } else if (data && (data.sendingFreeParcels || data.sendingOtherAgents)) {
-        // Convert received objects back to Maps (no helper needed)
+        // Convert received objects back to Maps
         const receivedFreeParcels = new Map(Object.entries(data.sendingFreeParcels || {}));
         const receivedOtherAgents = new Map(Object.entries(data.sendingOtherAgents || {}));
-        // console.log(`Received message from ${fromId}:`, {
-        //     freeParcels: receivedFreeParcels,
-        //     otherAgents: receivedOtherAgents
-        // });
+        
         // Update freeParcels
         for (const [id, receivedParcel] of receivedFreeParcels) {
             const localParcel = freeParcels.get(id);
@@ -178,7 +171,7 @@ client.onMsg((fromId, fromName, message, replyAck) => {
         // Update otherAgents (except self)
         for (const [id, receivedAgent] of receivedOtherAgents) {
             if (id === MY_AGENT_ID) continue; // Skip self
-
+            // console.log('receivedOtherAgents', receivedOtherAgents);
             const localAgent = otherAgents.get(id);
             // Only update if received info is more recent
             if (!localAgent || (receivedAgent.lastUpdate > (localAgent.lastUpdate || 0))) {
@@ -194,7 +187,39 @@ client.onMsg((fromId, fromName, message, replyAck) => {
             }
         }
     } 
+
+    // Handle drop_intention? requests
+    if (typeof msg === 'string' && msg.startsWith('drop_intention?')) {
+        const payload = msg.replace('drop_intention?', '');
+        const [parcelId, theirScoreStr] = payload.split('|');
+        const theirScore = parseFloat(theirScoreStr);
+        const bestIntention = myAgent.intention_queue[0]?.predicate;
+        if (!utils.stillValid(bestIntention)) {
+            reply({ answer: 'no' });
+            return;
+        }
+        if (
+            bestIntention &&
+            bestIntention[0] === 'go_pick_up' &&
+            bestIntention[3] === parcelId
+        ) {
+            const myScore = utils.getScore(bestIntention);
+            // For now, reply 'no' if score >= 0, 'yes' if score < 0
+            if (reply) {
+                if (myScore >= theirScore) {
+                    reply({ answer: 'no' }); // keep intention
+                } else {
+                    reply({ answer: 'yes' }); // drop intention
+                    myAgent.intention_queue.shift();
+                }
+            }
+        } else {
+            reply({ answer: 'no' });
+        }
+        return;
+    }
 });
+
 
 client.onMap((width, height, tiles) => {
     deliveryCells.clear();
@@ -337,6 +362,7 @@ client.onParcelsSensing(async (pp) => {
             carriedParcels.set(p.id, { id: p.id, reward: p.reward, lastUpdate: Date.now() });
         } else if (p.carriedBy === null && !assignedToOtherAgentParcels.has(p.id)) {
             // Update or add parcel, and set lastSeen
+
             let existing = freeParcels.get(p.id);
             freeParcels.set(p.id, {
                 ...(existing || {}),
@@ -356,11 +382,29 @@ client.onParcelsSensing(async (pp) => {
 // OPTIONS GENERATION AND FILTERING
 // ###################################################################################################
 
+// Master intention reviser system
+function masterIntentionReviser() {
+    // Only run if both agents are in the map
+    if (!otherAgents.has(OTHER_AGENT_ID) || !otherAgents.has(MY_AGENT_ID)) {
+        return;
+    }
+    
+    // Only Agent 1 (master) runs this
+    if (MY_AGENT_ID !== AGENT1_ID) {
+        return;
+    }
+    
+    // Get Agent 2's top 2 intentions from the message
+    // This will be implemented in the message handler
+}
+
 function generateOptions () {
     const carriedTotal = utils.carriedValue();
 
     let best_option = null;
     let best_distance = Number.MAX_VALUE;
+    let second_best_option = null;
+    let second_best_distance = Number.MAX_VALUE;
 
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
@@ -369,13 +413,9 @@ function generateOptions () {
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
             best_distance = bestDelivery.distance;
         } else {
-            // console.log('No delivery possible, trying to deliver to other agent');
             // No delivery possible, try to deliver to other agent
-            // Find the other agent's position
             const other = otherAgents.get(OTHER_AGENT_ID);
             if (other && other.x !== undefined && other.y !== undefined) {
-                // console.log('Other agent found');
-                // Find a valid adjacent position to the other agent
                 const adjacentPositions = [
                     {x: other.x - 1, y: other.y}, // left
                     {x: other.x + 1, y: other.y}, // right
@@ -394,16 +434,9 @@ function generateOptions () {
                     }
                 }
                 const pathToOther = utils.getShortestPath(me.x, me.y, deliveryNeighbour.x, deliveryNeighbour.y);
-                // console.log('Path to other agent', pathToOther);
-                // console.log('graph', global.graph);
-                // console.log('me', me);
-                // console.log('other', other);
                 if (pathToOther && pathToOther.path) {
-                    // console.log('Deliver to other agent found');
                     best_option = ['go_deliver_agent', other.x, other.y, pathToOther.path];
                     best_distance = pathToOther.cost;
-                    // console.log('Deliver to other agent found', best_option);
-                    // console.log('best_distance', best_distance);
                 }
             }
         }
@@ -418,17 +451,23 @@ function generateOptions () {
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
             if (pickupPath && pickupPath.cost < best_distance) {
+                second_best_distance = best_distance;
+                second_best_option = best_option;
                 best_distance = pickupPath.cost;
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
+            } else if (pickupPath && pickupPath.cost < second_best_distance) {
+                second_best_distance = pickupPath.cost;
+                second_best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             }
         }
     }
+    
+
+    
     // Push the best option found
     if (best_option !== null && best_distance !== null) {
-        // console.log('Pushing best option', best_option);
         myAgent.push(best_option);
-    }
-    else {
+    } else {
         myAgent.push(['idle']);
     }
 
@@ -470,7 +509,14 @@ class IntentionRevision {
                     this.intention_queue.shift();
                     continue;
                 }
-
+                
+                // if (intention.predicate[0] == 'go_pick_up') {
+                //     let reply = await client.emitAsk(OTHER_AGENT_ID, `drop_intention?${id}|${utils.getScore(intention.predicate)}`);
+                //     if (reply && reply['answer'] === 'yes') {
+                //         this.intention_queue.shift();
+                //         continue;
+                //     }
+                // }
                 // Start achieving intention
                 await intention.achieve()
                 // Catch eventual error and continue
@@ -904,7 +950,7 @@ class GoDeliverAgent extends Plan {
                     if (parcel) {
                         freeParcels.delete(parcelId);
                     }
-                    assignedToOtherAgentParcels.set(parcelId, {id: parcelId});
+                    assignedToOtherAgentParcels.add(parcelId);
                 }
                 await client.emitPutdown();
                 if (this.stopped) throw ['stopped']; // if stopped then quit
