@@ -68,9 +68,13 @@ client.onConfig(cfg => {
 const me = {id: null, name: null, x: null, y: null, score: null};
 
 /**
- * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number, lastSeen:number, assignedAgent?: string} > }
+ * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number, lastSeen:number} > }
  */
 const freeParcels = new Map();
+/**
+ * @type { Map< string, {id: string} > }
+ */
+const assignedToOtherAgentParcels = new Map();
 // #######################################################################################################################
 // CHECK CARRIED BY
 //##########################################################################################################################
@@ -189,17 +193,7 @@ client.onMsg((fromId, fromName, message, replyAck) => {
                 }
             }
         }
-    } else if (data && data.type === 'pick_up_parcels' && Array.isArray(data.parcelIds)) {
-        // console.log('Received instruction to pick up specific parcels');
-        // Received instruction to pick up specific parcels
-        for (const parcelId of data.parcelIds) {
-            const parcel = freeParcels.get(parcelId);
-            if (parcel) {
-                // Push a pick up intention for each parcel
-                myAgent.push(['go_pick_up', parcel.x, parcel.y, parcel.id, utils.getShortestPath(me.x, me.y, parcel.x, parcel.y).path]);
-            }
-        }
-    }
+    } 
 });
 
 client.onMap((width, height, tiles) => {
@@ -321,12 +315,11 @@ client.onParcelsSensing(async (pp) => {
     carriedParcels.clear();
 
     for (const [id, parcel] of freeParcels) {
-        // Remove parcels assigned to another agent
-        if (parcel.assignedAgent && parcel.assignedAgent !== me.id) {
+        // Remove parcels that are assigned to the other agent
+        if (assignedToOtherAgentParcels.has(id)) {
             freeParcels.delete(id);
-            continue;
         }
-        if (
+        else if (
             utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE &&
             !pp.find(p => p.id === parcel.id)
         ) {
@@ -342,15 +335,14 @@ client.onParcelsSensing(async (pp) => {
             // Notify the other agent to delete this parcel
             client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: p.id });
             carriedParcels.set(p.id, { id: p.id, reward: p.reward, lastUpdate: Date.now() });
-        } else if (p.carriedBy === null ) {
+        } else if (p.carriedBy === null && !assignedToOtherAgentParcels.has(p.id)) {
             // Update or add parcel, and set lastSeen
-            let existing = freeParcels.get(p.id) || {};
+            let existing = freeParcels.get(p.id);
             freeParcels.set(p.id, {
-                ...existing,
+                ...(existing || {}),
                 ...p,
                 lastUpdate: Date.now(), // or keep your logic for lastUpdate
                 lastSeen: Date.now(),
-                
             });
         } else {
             // Notify the other agent to delete this parcel
@@ -421,7 +413,8 @@ function generateOptions () {
     for (const parcel of freeParcels.values()) {
         if (
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
-            Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
+            Number.isInteger(parcel.x) && Number.isInteger(parcel.y) &&
+            !assignedToOtherAgentParcels.has(parcel.id)
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
             if (pickupPath && pickupPath.cost < best_distance) {
@@ -894,35 +887,56 @@ class GoDeliverAgent extends Plan {
         if (this.stopped) throw ['stopped']; // if stopped then quit
         await this.subIntention(['go_to', x, y, path]);
         if (this.stopped) throw ['stopped']; // if stopped then quit
-        // Check distance to OTHER_AGENT_ID only
+        
+        
+        // Check distance to OTHER_AGENT_ID
         const other = otherAgents.get(OTHER_AGENT_ID);
         if (other && other.x !== undefined && other.y !== undefined) {
             const dist = utils.manhattanDistance(me, other);
             if (dist <= 4) {
+                // console.log('Putdown parcels near other agent');
+                // Always putdown parcels first
                 const parcelsToPick = Array.from(carriedParcels.keys());
-                await client.emitPutdown();
-                // console.log('Putdown parcels');
-                // After putdown, assign these parcels to the other agent
+                console.log('assigned parcels before putdown', assignedToOtherAgentParcels);
+                console.log('Parcels to pick', parcelsToPick);
                 for (const parcelId of parcelsToPick) {
                     let parcel = freeParcels.get(parcelId);
                     if (parcel) {
-                        parcel.assignedAgent = OTHER_AGENT_ID;
-                        freeParcels.set(parcelId, parcel);
+                        freeParcels.delete(parcelId);
                     }
+                    assignedToOtherAgentParcels.set(parcelId, {id: parcelId});
                 }
+                await client.emitPutdown();
+                if (this.stopped) throw ['stopped']; // if stopped then quit
+                console.log('assigned parcels after putdown', assignedToOtherAgentParcels);
+                
+                // Assign these parcels to the other agent
+
+                
                 // Send message to other agent to pick up these parcels
-                client.emitSay(OTHER_AGENT_ID, {
-                    type: 'pick_up_parcels',
-                    parcelIds: parcelsToPick
-                });
+                
                 // Move away from the drop location (try to move to a neighboring free cell)
-                const directions = ['up', 'down', 'left', 'right'];
+                const directions = [];
+                if (me.x < other.x) {
+                    directions.push('left');
+                }
+                else if (me.x > other.x) {
+                    directions.push('right');
+                }
+                else if (me.y < other.y) {
+                    directions.push('down');
+                }
+                else if (me.y > other.y) {
+                    directions.push('up');
+                }
+                
                 for (const dir of directions) {
                     let targetX = me.x, targetY = me.y;
                     if (dir === 'up') targetY++;
                     else if (dir === 'down') targetY--;
                     else if (dir === 'left') targetX--;
                     else if (dir === 'right') targetX++;
+                    
                     // Check if the target cell is free in the graph
                     const currentNodeId = '(' + me.x + ',' + me.y + ')';
                     const targetNodeId = '(' + targetX + ',' + targetY + ')';
@@ -941,17 +955,24 @@ class GoDeliverAgent extends Plan {
                             case 'right': moveResult = await client.emitMove('right'); break;
                         }
                         if (moveResult) {
-                            me.x = moveResult.x;
-                            me.y = moveResult.y;
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                             break;
                         }
                     }
+
+                    
+
+
+                                    // Wait a bit for parcels to appear in freeParcels
+                // await new Promise(resolve => setTimeout(resolve, 200));
                 }
+
                 return true;
             }
         }
-        // If not within distance, just putdown anyway
-        await client.emitPutdown();
+        
+        // If not within distance, parcels are already putdown but not assigned to other agent
+        // console.log('Putdown parcels but not near other agent');
         return true;
     }
 }
