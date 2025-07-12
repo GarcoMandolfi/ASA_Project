@@ -28,20 +28,20 @@ process.stdin.setRawMode(true);
 
 process.stdin.on('keypress', (str, key) => {
     if (key.name === 'p' && !isPaused) {
-        console.log('\n🟡 Program PAUSED. Press "r" to resume...');
+        console.log('\nProgram PAUSED. Press "r" to resume...');
         isPaused = true;
         pauseResumePromise = new Promise(resolve => {
             pauseResumeResolver = resolve;
         });
     } else if (key.name === 'r' && isPaused) {
-        console.log('🟢 Program RESUMED.');
+        console.log('Program RESUMED.');
         isPaused = false;
         if (pauseResumeResolver) {
             pauseResumeResolver();
             pauseResumeResolver = null;
         }
     } else if (key.ctrl && key.name === 'c') {
-        console.log('\n🛑 Program terminated.');
+        console.log('\nProgram terminated.');
         process.exit();
     }
 });
@@ -953,9 +953,7 @@ class SimpleDelivery extends Plan {
         }
         
         // Simple delivery without PDDL - just put down if at delivery location
-        if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
-            // Add a small delay before delivery to ensure we're properly positioned
-            await new Promise(resolve => setTimeout(resolve, 100));
+        if (me.x == x && me.y == y) {
             
             // Try to deliver and check if it was successful
             const result = await client.emitPutdown();
