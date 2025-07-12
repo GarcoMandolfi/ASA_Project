@@ -13,6 +13,10 @@ let isPaused = false;
 let pauseResumePromise = null;
 let pauseResumeResolver = null;
 
+// Delivery state management
+let justDelivered = false;
+let lastDeliveryTime = 0;
+
 // Setup keyboard listener for pause/resume
 const rl = readline.createInterface({
     input: process.stdin,
@@ -232,8 +236,11 @@ client.onAgentsSensing(async agents => {
             status: 'visible'
         });
         
-        // Block new positions
-        utils.blockAgentPositions(a.id, occupiedCells);
+        // Block new positions only if agent is visible and in range
+        const distance = Math.abs(a.x - me.x) + Math.abs(a.y - me.y);
+        if (distance < config.AGENTS_OBSERVATION_DISTANCE) {
+            utils.blockAgentPositions(a.id, occupiedCells);
+        }
     }
     
     // Check all tracked agents for visibility
@@ -298,7 +305,37 @@ client.onParcelsSensing( async (pp) => {
 // OPTIONS GENERATION AND FILTERING
 // ###################################################################################################
 
+// Helper function to validate if a path is still valid
+function isPathValid(path) {
+    if (!path || !Array.isArray(path) || path.length === 0) {
+        console.log('Path validation failed: path is null, not array, or empty');
+        return false;
+    }
+    
+    console.log(`Validating path: ${path.join(' -> ')}`);
+    for (let nodeId of path) {
+        if (!global.graph || !global.graph.has(nodeId)) {
+            console.log(`Path validation failed: node ${nodeId} not found in graph`);
+            return false;
+        }
+    }
+    console.log('Path validation passed');
+    return true;
+}
+
 function generateOptions () {
+    // Check if we just delivered and should wait before generating new options
+    const timeSinceDelivery = Date.now() - lastDeliveryTime;
+    if (justDelivered && timeSinceDelivery < 2000) { // Wait 2 seconds after delivery
+        console.log('Just delivered, waiting before generating new options');
+        return;
+    }
+    
+    // Reset delivery flag if enough time has passed
+    if (justDelivered && timeSinceDelivery >= 2000) {
+        justDelivered = false;
+    }
+    
     const carriedTotal = utils.carriedValue();
 
     let best_option = null;
@@ -307,9 +344,13 @@ function generateOptions () {
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
         const bestDelivery = utils.findClosestDelivery(me.x, me.y);
-        if (bestDelivery) {
+        if (bestDelivery && isPathValid(bestDelivery.path)) {
+            console.log(`Found delivery point at (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
+            console.log(`Delivery path: ${bestDelivery.path.join(' -> ')}`);
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
             best_distance = bestDelivery.distance;
+        } else {
+            console.log('No valid delivery point found or path is invalid');
         }
     }
 
@@ -320,7 +361,7 @@ function generateOptions () {
             Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
-            if (pickupPath && pickupPath.cost < best_distance) {
+            if (pickupPath && pickupPath.cost < best_distance && isPathValid(pickupPath.path)) {
                 best_distance = pickupPath.cost;
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             }
@@ -620,8 +661,18 @@ class GoPickUp extends Plan {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        await client.emitPickup()
-        return true;
+        
+        // Check if we're at the correct position for pickup
+        if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
+            // Add a small delay before pickup to ensure we're properly positioned
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await client.emitPickup();
+            // Add a small delay after pickup
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return true;
+        } else {
+            throw ['Not at pickup location'];
+        }
     }
 
 }
@@ -638,12 +689,36 @@ class GoDeliver extends Plan {
         // Try PDDL delivery first
         try {
             await this.subIntention( ['pddl_deliver', x, y]);
+            // Add a longer delay after successful delivery to prevent immediate movement
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Force the agent to wait a bit more and check if we're still at the delivery location
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // If we're still at the delivery location, don't move immediately
+            if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
+                this.log('Still at delivery location, waiting before any movement');
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
             return true;
         } catch (error) {
             this.log('PDDL delivery failed, trying path-based delivery');
             // Fallback: use path-based delivery
             await this.subIntention( ['go_to', x, y, path] );
             await this.subIntention( ['simple_deliver', x, y] );
+            // Add a longer delay after successful delivery to prevent immediate movement
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Force the agent to wait a bit more and check if we're still at the delivery location
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // If we're still at the delivery location, don't move immediately
+            if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
+                this.log('Still at delivery location, waiting before any movement');
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
             return true;
         }
     }
@@ -658,23 +733,119 @@ class BlindMove extends Plan {
 
     async execute ( go_to, x, y, path ) {
         if (path && Array.isArray(path) && path.length > 1) {
+            this.log(`Starting movement to (${x}, ${y}) with path: ${path.join(' -> ')}`);
+            this.log(`Current position: (${me.x}, ${me.y})`);
+            
             // path is an array of node strings like '(x,y)'
             for (let i = 1; i < path.length; i++) {
                 if (this.stopped) throw ['stopped'];
+                
+                // Add a small delay to prevent moving too quickly
+                await new Promise(resolve => setTimeout(resolve, 50));
+                
                 const [targetX, targetY] = path[i].replace(/[()]/g, '').split(',').map(Number);
                 const dx = targetX - me.x;
                 const dy = targetY - me.y;
+                
+                // Check if target position is blocked by another agent
+                let targetBlocked = false;
+                for (const [agentId, agent] of otherAgents) {
+                    if (agent.status === 'visible' && 
+                        Math.abs(agent.x - targetX) < 0.1 && 
+                        Math.abs(agent.y - targetY) < 0.1) {
+                        this.log(`Target position (${targetX}, ${targetY}) blocked by agent ${agentId}`);
+                        targetBlocked = true;
+                        break;
+                    }
+                }
+                
+                // Also check if the target position is blocked in the graph
+                const targetNodeId = `(${targetX},${targetY})`;
+                if (global.graph && !global.graph.has(targetNodeId)) {
+                    this.log(`Target position (${targetX}, ${targetY}) blocked in graph`);
+                    targetBlocked = true;
+                } else {
+                    this.log(`Target position (${targetX}, ${targetY}) is accessible`);
+                }
+                
+                if (targetBlocked) {
+                    this.log('Target position blocked, waiting...');
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // If we've been stuck for too long, recalculate the path
+                    if (i > 1) {
+                        this.log('Stuck for too long, recalculating path...');
+                        throw ['path_blocked'];
+                    }
+                    continue; // Try the same step again
+                }
+                
+                // Check if the target position is actually reachable
+                if (global.graph) {
+                    const currentNodeId = `(${Math.floor(me.x)},${Math.floor(me.y)})`;
+                    const targetNodeId = `(${targetX},${targetY})`;
+                    
+                    if (!global.graph.has(currentNodeId)) {
+                        this.log(`Current position ${currentNodeId} not in graph`);
+                        throw ['current_position_invalid'];
+                    }
+                    
+                    if (!global.graph.has(targetNodeId)) {
+                        this.log(`Target position ${targetNodeId} not in graph`);
+                        throw ['target_position_invalid'];
+                    }
+                    
+                    const currentNeighbors = global.graph.get(currentNodeId);
+                    if (!currentNeighbors || !currentNeighbors.has(targetNodeId)) {
+                        this.log(`No direct path from ${currentNodeId} to ${targetNodeId}`);
+                        throw ['no_direct_path'];
+                    }
+                }
+                
                 let moved = null;
                 if (dx > 0) moved = await client.emitMove('right');
                 else if (dx < 0) moved = await client.emitMove('left');
                 else if (dy > 0) moved = await client.emitMove('up');
                 else if (dy < 0) moved = await client.emitMove('down');
+                
                 if (moved) {
                     me.x = moved.x;
                     me.y = moved.y;
+                    this.log(`Successfully moved to (${me.x}, ${me.y})`);
+                    // Add a small delay after successful movement
+                    await new Promise(resolve => setTimeout(resolve, 50));
                 } else {
+                    this.log(`Failed to move from (${me.x}, ${me.y}) to (${targetX}, ${targetY})`);
                     this.log('stucked');
-                    throw 'stucked';
+                    
+                    // Try to find an alternative path or wait a bit
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Check if we can move in any direction
+                    const directions = ['up', 'down', 'left', 'right'];
+                    let foundAlternative = false;
+                    
+                    for (const dir of directions) {
+                        let testMove = null;
+                        switch (dir) {
+                            case 'up': testMove = await client.emitMove('up'); break;
+                            case 'down': testMove = await client.emitMove('down'); break;
+                            case 'left': testMove = await client.emitMove('left'); break;
+                            case 'right': testMove = await client.emitMove('right'); break;
+                        }
+                        
+                        if (testMove) {
+                            this.log(`Found alternative move: ${dir}`);
+                            me.x = testMove.x;
+                            me.y = testMove.y;
+                            foundAlternative = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!foundAlternative) {
+                        throw 'stucked';
+                    }
                 }
             }
             return true;
@@ -706,9 +877,42 @@ class PddlDelivery extends Plan {
         if (!plan || plan.length === 0) {
             this.log('PDDL planning failed - no plan found. Current position:', me.x, me.y, 'Target:', x, y);
             // Fallback: try to deliver directly if we're at the delivery location
-            if (me.x === x && me.y === y) {
+            if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
+                // Check if we're actually carrying parcels
+                if (carriedParcels.size === 0) {
+                    this.log('No parcels to deliver');
+                    return true;
+                }
+                
+                // Check if we're at a valid delivery point
+                const deliveryPointId = `(${Math.floor(x)},${Math.floor(y)})`;
+                const isDeliveryPoint = deliveryCells.has(deliveryPointId);
+                if (!isDeliveryPoint) {
+                    this.log(`Position (${x}, ${y}) is not a valid delivery point`);
+                    throw ['Not at valid delivery point'];
+                }
+                
                 this.log('At delivery location, attempting direct delivery');
-                await client.emitPutdown();
+                // Add a small delay before delivery to ensure we're properly positioned
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Try to deliver and check if it was successful
+                const result = await client.emitPutdown();
+                
+                // Set delivery flag to prevent immediate movement
+                justDelivered = true;
+                lastDeliveryTime = Date.now();
+                
+                // Add a small delay after delivery
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Check if we still have parcels (delivery might have failed)
+                if (carriedParcels.size > 0) {
+                    this.log('Delivery might have failed, still carrying parcels');
+                    // Don't throw error, just return true to avoid infinite retry
+                    return true;
+                }
+                
                 return true;
             } else {
                 this.log('Not at delivery location, cannot deliver directly');
@@ -718,7 +922,27 @@ class PddlDelivery extends Plan {
         
         // Execute the plan
         try {
-            pddlExecutor.exec(plan);
+            // Execute the plan step by step and stop after delivery
+            for (let i = 0; i < plan.length; i++) {
+                if (this.stopped) throw ['stopped'];
+                
+                const step = plan[i];
+                await pddlExecutor.exec([step]);
+                
+                // If this was a putdown action, stop executing further steps
+                if (step && String(step).toLowerCase().includes('putdown')) {
+                    this.log('Delivery action completed, stopping PDDL execution');
+                    // Set delivery flag to prevent immediate movement
+                    justDelivered = true;
+                    lastDeliveryTime = Date.now();
+                    // Add a longer delay after delivery to prevent immediate movement
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    break;
+                }
+                
+                // Add a small delay between steps
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
             return true;
         } catch (error) {
             this.log('PDDL execution failed:', error);
@@ -737,9 +961,38 @@ class SimpleDelivery extends Plan {
     async execute(simple_deliver, x, y) {
         if (this.stopped) throw ['stopped'];
         
+        // Check if we're actually carrying parcels
+        if (carriedParcels.size === 0) {
+            this.log('No parcels to deliver');
+            return true;
+        }
+        
+        // Check if we're at a valid delivery point
+        const deliveryPointId = `(${Math.floor(x)},${Math.floor(y)})`;
+        const isDeliveryPoint = deliveryCells.has(deliveryPointId);
+        if (!isDeliveryPoint) {
+            this.log(`Position (${x}, ${y}) is not a valid delivery point`);
+            throw ['Not at valid delivery point'];
+        }
+        
         // Simple delivery without PDDL - just put down if at delivery location
-        if (me.x === x && me.y === y) {
-            await client.emitPutdown();
+        if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
+            // Add a small delay before delivery to ensure we're properly positioned
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Try to deliver and check if it was successful
+            const result = await client.emitPutdown();
+            
+            // Add a small delay after delivery
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Check if we still have parcels (delivery might have failed)
+            if (carriedParcels.size > 0) {
+                this.log('Delivery might have failed, still carrying parcels');
+                // Don't throw error, just return true to avoid infinite retry
+                return true;
+            }
+            
             return true;
         } else {
             throw ['Not at delivery location'];
