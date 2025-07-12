@@ -686,9 +686,11 @@ class GoDeliver extends Plan {
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         
-        // Try PDDL delivery first
+        // Use path-based delivery as primary method (more reliable)
         try {
-            await this.subIntention( ['pddl_deliver', x, y]);
+            this.log('Using path-based delivery');
+            await this.subIntention( ['go_to', x, y, path] );
+            await this.subIntention( ['simple_deliver', x, y] );
             // Add a longer delay after successful delivery to prevent immediate movement
             await new Promise(resolve => setTimeout(resolve, 500));
             
@@ -703,10 +705,9 @@ class GoDeliver extends Plan {
             
             return true;
         } catch (error) {
-            this.log('PDDL delivery failed, trying path-based delivery');
-            // Fallback: use path-based delivery
-            await this.subIntention( ['go_to', x, y, path] );
-            await this.subIntention( ['simple_deliver', x, y] );
+            this.log('Path-based delivery failed, trying PDDL delivery as fallback');
+            // Fallback: use PDDL delivery
+            await this.subIntention( ['pddl_deliver', x, y]);
             // Add a longer delay after successful delivery to prevent immediate movement
             await new Promise(resolve => setTimeout(resolve, 500));
             
@@ -867,7 +868,7 @@ class PddlDelivery extends Plan {
             'Deliveroo',
             pddlBeliefSet.objects.join(' '),
             pddlBeliefSet.toPddlString(),
-            'and (at Tile_' + x + '_' + y + ') (not (at Tile_' + me.x + '_' + me.y + ')) (not (canDeliver))'
+            'and (at Tile_' + x + '_' + y + ') (not (canDeliver))'
         );
         utils.pddlRemoveDoublePredicates();
 
@@ -927,18 +928,35 @@ class PddlDelivery extends Plan {
                 if (this.stopped) throw ['stopped'];
                 
                 const step = plan[i];
-                await pddlExecutor.exec([step]);
                 
-                // If this was a putdown action, stop executing further steps
+                // Check if this is a putdown action and we're not at the delivery location yet
                 if (step && String(step).toLowerCase().includes('putdown')) {
-                    this.log('Delivery action completed, stopping PDDL execution');
-                    // Set delivery flag to prevent immediate movement
-                    justDelivered = true;
-                    lastDeliveryTime = Date.now();
-                    // Add a longer delay after delivery to prevent immediate movement
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    break;
+                    // Only execute putdown if we're at the delivery location
+                    if (Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1) {
+                        this.log('At delivery location, executing PUTDOWN');
+                        await pddlExecutor.exec([step]);
+                        this.log('Delivery action completed, stopping PDDL execution');
+                        // Set delivery flag to prevent immediate movement
+                        justDelivered = true;
+                        lastDeliveryTime = Date.now();
+                        // Add a longer delay after delivery to prevent immediate movement
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        break;
+                    } else {
+                        this.log(`PUTDOWN action found but not at delivery location yet. Current: (${me.x}, ${me.y}), Target: (${x}, ${y})`);
+                        this.log('Skipping PUTDOWN until we reach the delivery location');
+                        // Don't continue, just skip this step and move to the next one
+                        continue; // Skip this step for now
+                    }
                 }
+                
+                // For movement actions, check if we're trying to move to the delivery location
+                if (step && String(step).toLowerCase().includes('move')) {
+                    this.log(`Executing movement step: ${step}`);
+                }
+                
+                // Execute movement actions normally
+                await pddlExecutor.exec([step]);
                 
                 // Add a small delay between steps
                 await new Promise(resolve => setTimeout(resolve, 50));
