@@ -361,7 +361,7 @@ function generateOptions () {
             Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
-            if (pickupPath && pickupPath.cost < best_distance && isPathValid(pickupPath.path)) {
+            if (pickupPath && pickupPath.path && pickupPath.cost < best_distance && isPathValid(pickupPath.path)) {
                 best_distance = pickupPath.cost;
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             }

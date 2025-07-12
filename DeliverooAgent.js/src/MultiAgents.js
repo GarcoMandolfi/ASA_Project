@@ -127,7 +127,8 @@ setInterval(() => {
     });
     const data = {
         sendingFreeParcels: Object.fromEntries(freeParcels),
-        sendingOtherAgents: Object.fromEntries(otherAgentsToSend)
+        sendingOtherAgents: Object.fromEntries(otherAgentsToSend),
+        sendingCarriedParcels: Object.fromEntries(carriedParcels)
     };
     client.emitSay(OTHER_AGENT_ID, data);
 }, 100);
@@ -152,10 +153,11 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
     // Handle both types of messages: deleteParcel and state sync
     if (data && data.type === 'deleteParcel' && data.parcelId) {
         freeParcels.delete(data.parcelId);
-    } else if (data && (data.sendingFreeParcels || data.sendingOtherAgents)) {
+    } else if (data && (data.sendingFreeParcels || data.sendingOtherAgents || data.sendingCarriedParcels)) {
         // Convert received objects back to Maps
         const receivedFreeParcels = new Map(Object.entries(data.sendingFreeParcels || {}));
         const receivedOtherAgents = new Map(Object.entries(data.sendingOtherAgents || {}));
+        const receivedCarriedParcels = new Map(Object.entries(data.sendingCarriedParcels || {}));
         
         // Update freeParcels
         for (const [id, receivedParcel] of receivedFreeParcels) {
@@ -164,6 +166,15 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
                 freeParcels.set(id, { ...localParcel, ...receivedParcel });
             }
         }
+        
+        // Handle carried parcels - remove them from assignedToOtherAgentParcels if they're being carried by the other agent
+        for (const [id, receivedCarriedParcel] of receivedCarriedParcels) {
+            if (assignedToOtherAgentParcels.has(id)) {
+                console.log(`Removing parcel ${id} from assignedToOtherAgentParcels - now being carried by other agent`);
+                assignedToOtherAgentParcels.delete(id);
+            }
+        }
+        
 
         // Update otherAgents (except self)
         for (const [id, receivedAgent] of receivedOtherAgents) {
@@ -470,18 +481,21 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
+        console.log('parcel', parcel);
         if (
+            parcel && // Check if parcel is not null
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
             Number.isInteger(parcel.x) && Number.isInteger(parcel.y) &&
             !assignedToOtherAgentParcels.has(parcel.id)
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
-            if (pickupPath && pickupPath.cost < best_distance) {
+            if (pickupPath && pickupPath.path && pickupPath.cost < best_distance) {
                 second_best_distance = best_distance;
                 second_best_option = best_option;
                 best_distance = pickupPath.cost;
+                console.log('best_option', best_option);
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
-            } else if (pickupPath && pickupPath.cost < second_best_distance) {
+            } else if (pickupPath && pickupPath.path && pickupPath.cost < second_best_distance) {
                 second_best_distance = pickupPath.cost;
                 second_best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             }
@@ -519,6 +533,7 @@ class IntentionRevision {
 
     async loop ( ) {
         await new Promise(res => setTimeout(res, 50));
+        // console.log(' we are in the loop');
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
@@ -526,6 +541,7 @@ class IntentionRevision {
             
                 // Current intention
                 const intention = this.intention_queue[0];
+                console.log('intentisdasdasdasdasdasdasdadsdaon', intention.predicate[0]);
                 if (intention.predicate[0] == 'idle') {
                     await intention.achieve()
                     .catch( error => {
@@ -981,6 +997,52 @@ class GoDeliverAgent extends Plan {
     static isApplicableTo(go_deliver_agent, x, y, path) {
         return go_deliver_agent == 'go_deliver_agent';
     }
+    
+    canMoveAfterPutdown() {
+        // Check if we can move away from the other agent in any direction
+        const other = otherAgents.get(OTHER_AGENT_ID);
+        if (!other || other.x === undefined || other.y === undefined) {
+            return false;
+        }
+        
+        // Determine which direction to move away from the other agent
+        const directions = [];
+        if (me.x < other.x) {
+            directions.push('left');
+        }
+        else if (me.x > other.x) {
+            directions.push('right');
+        }
+        else if (me.y < other.y) {
+            directions.push('down');
+        }
+        else if (me.y > other.y) {
+            directions.push('up');
+        }
+        
+        // Check if any of these directions are valid moves
+        for (const dir of directions) {
+            let targetX = me.x, targetY = me.y;
+            if (dir === 'up') targetY++;
+            else if (dir === 'down') targetY--;
+            else if (dir === 'left') targetX--;
+            else if (dir === 'right') targetX++;
+            
+            // Check if the target cell is free in the graph
+            const currentNodeId = '(' + me.x + ',' + me.y + ')';
+            const targetNodeId = '(' + targetX + ',' + targetY + ')';
+            if (
+                global.graph &&
+                global.graph.has(currentNodeId) &&
+                global.graph.has(targetNodeId) &&
+                global.graph.get(currentNodeId).has(targetNodeId)
+            ) {
+                return true; // Found at least one valid direction to move away
+            }
+        }
+        
+        return false; // No valid direction to move away
+    }
 
     async execute(go_deliver_agent, x, y, path) {
         // console.log('Go deliver agent');
@@ -994,7 +1056,14 @@ class GoDeliverAgent extends Plan {
         if (other && other.x !== undefined && other.y !== undefined) {
             const dist = utils.manhattanDistance(me, other);
             if (dist <= 4) {
-                // console.log('Putdown parcels near other agent');
+                // Check if we can move after putting down parcels
+                if (!this.canMoveAfterPutdown()) {
+                    console.log('Cannot move after putdown, skipping delivery to other agent');
+                    return true;
+                }
+                
+                console.log('Can move after putdown, proceeding with delivery');
+                
                 // Always putdown parcels first
                 const parcelsToPick = Array.from(carriedParcels.keys());
                 console.log('assigned parcels before putdown', assignedToOtherAgentParcels);
