@@ -567,7 +567,6 @@ class GoPickUp extends Plan {
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.emitPickup()
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
         return true;
     }
 
@@ -583,9 +582,6 @@ class GoDeliver extends Plan {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['pddl_deliver', x, y]);
         // await this.subIntention( ['go_to', x, y, path] );
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        // await client.emitPutdown()
-        if ( this.stopped ) throw ['stopped']; // if stopped then quit
         return true;
     }
 
