@@ -212,7 +212,7 @@ function generateOptions () {
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
         const bestDelivery = utils.findClosestDelivery(me.x, me.y);
-        if (bestDelivery) {
+        if (bestDelivery && bestDelivery.deliveryPoint) {
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
             best_distance = bestDelivery.distance;
         }

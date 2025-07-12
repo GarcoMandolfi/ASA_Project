@@ -446,7 +446,8 @@ function generateOptions () {
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
         const bestDelivery = utils.findClosestDelivery(me.x, me.y);
-        if (bestDelivery && bestDelivery.path) {
+        
+        if (bestDelivery && bestDelivery.path && bestDelivery.deliveryPoint) {
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
             best_distance = bestDelivery.distance;
         } else {
@@ -481,7 +482,7 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
-        console.log('parcel', parcel);
+        // console.log('parcel', parcel);
         if (
             parcel && // Check if parcel is not null
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
@@ -493,7 +494,7 @@ function generateOptions () {
                 second_best_distance = best_distance;
                 second_best_option = best_option;
                 best_distance = pickupPath.cost;
-                console.log('best_option', best_option);
+                // console.log('best_option', best_option);
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             } else if (pickupPath && pickupPath.path && pickupPath.cost < second_best_distance) {
                 second_best_distance = pickupPath.cost;
@@ -541,7 +542,7 @@ class IntentionRevision {
             
                 // Current intention
                 const intention = this.intention_queue[0];
-                console.log('intentisdasdasdasdasdasdasdadsdaon', intention.predicate[0]);
+                // console.log('intentisdasdasdasdasdasdasdadsdaon', intention.predicate[0]);
                 if (intention.predicate[0] == 'idle') {
                     await intention.achieve()
                     .catch( error => {
