@@ -1,11 +1,53 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 import { PddlDomain, PddlAction, PddlProblem, PddlExecutor, onlineSolver, Beliefset } from "@unitn-asa/pddl-client";
 import * as utils from "./planningUtils.js"
+import readline from 'readline';
 
 const client = new DeliverooApi(
     'http://localhost:8080',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
 )
+
+// Pause/Resume functionality
+let isPaused = false;
+let pauseResumePromise = null;
+let pauseResumeResolver = null;
+
+// Setup keyboard listener for pause/resume
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+readline.emitKeypressEvents(process.stdin);
+process.stdin.setRawMode(true);
+
+process.stdin.on('keypress', (str, key) => {
+    if (key.name === 'p' && !isPaused) {
+        console.log('\n🟡 Program PAUSED. Press "r" to resume...');
+        isPaused = true;
+        pauseResumePromise = new Promise(resolve => {
+            pauseResumeResolver = resolve;
+        });
+    } else if (key.name === 'r' && isPaused) {
+        console.log('🟢 Program RESUMED.');
+        isPaused = false;
+        if (pauseResumeResolver) {
+            pauseResumeResolver();
+            pauseResumeResolver = null;
+        }
+    } else if (key.ctrl && key.name === 'c') {
+        console.log('\n🛑 Program terminated.');
+        process.exit();
+    }
+});
+
+// Helper function to check pause state
+async function checkPause() {
+    if (isPaused && pauseResumePromise) {
+        await pauseResumePromise;
+    }
+}
 
 let config = {};
 const pddlBeliefSet = new Beliefset();
@@ -148,7 +190,9 @@ setInterval(() => {
 }, 1000);
 
 
-client.onAgentsSensing(agents => {
+client.onAgentsSensing(async agents => {
+    await checkPause();
+    
     const seenAgentIds = new Set();
     
     for (let a of agents) {
@@ -229,6 +273,8 @@ client.onAgentsSensing(agents => {
 
 
 client.onParcelsSensing( async (pp) => {
+    await checkPause();
+    
     carriedParcels.clear();
 
     for (const [id, parcel] of freeParcels) {
@@ -313,6 +359,8 @@ class IntentionRevision {
         await new Promise(res => setTimeout(res, 50));
 
         while ( true ) {
+            // Check for pause
+            await checkPause();
 
             if (carriedParcels.size == 0)
                 pddlBeliefSet.undeclare('canDeliver');
@@ -402,6 +450,12 @@ class IntentionRevision {
 
 
 const myAgent = new IntentionRevision();
+
+console.log('\n🎮 Pause/Resume Controls:');
+console.log('   Press "p" to PAUSE the program');
+console.log('   Press "r" to RESUME the program');
+console.log('   Press "Ctrl+C" to exit\n');
+
 myAgent.loop();
 
 
@@ -580,9 +634,18 @@ class GoDeliver extends Plan {
 
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        await this.subIntention( ['pddl_deliver', x, y]);
-        // await this.subIntention( ['go_to', x, y, path] );
-        return true;
+        
+        // Try PDDL delivery first
+        try {
+            await this.subIntention( ['pddl_deliver', x, y]);
+            return true;
+        } catch (error) {
+            this.log('PDDL delivery failed, trying path-based delivery');
+            // Fallback: use path-based delivery
+            await this.subIntention( ['go_to', x, y, path] );
+            await this.subIntention( ['simple_deliver', x, y] );
+            return true;
+        }
     }
 
 }
@@ -639,15 +702,48 @@ class PddlDelivery extends Plan {
 
         let plan = await onlineSolver(pddlDomain.toPddlString(), pddlProblem.toPddlString());
         
-        while( plan.length > 0){
-            if (this.stopped) throw ['stopped'];
-
-            let step = plan.shift();
-
-            pddlExecutor.exec ([step]);
+        // Check if plan is valid and not empty
+        if (!plan || plan.length === 0) {
+            this.log('PDDL planning failed - no plan found. Current position:', me.x, me.y, 'Target:', x, y);
+            // Fallback: try to deliver directly if we're at the delivery location
+            if (me.x === x && me.y === y) {
+                this.log('At delivery location, attempting direct delivery');
+                await client.emitPutdown();
+                return true;
+            } else {
+                this.log('Not at delivery location, cannot deliver directly');
+                throw ['PDDL planning failed - no valid plan found'];
+            }
         }
+        
+        // Execute the plan
+        try {
+            pddlExecutor.exec(plan);
+            return true;
+        } catch (error) {
+            this.log('PDDL execution failed:', error);
+            throw ['PDDL execution failed'];
+        }
+    }
 
-        return true;
+}
+
+class SimpleDelivery extends Plan {
+
+    static isApplicableTo(simple_deliver, x, y) {
+        return simple_deliver == 'simple_deliver';
+    }
+
+    async execute(simple_deliver, x, y) {
+        if (this.stopped) throw ['stopped'];
+        
+        // Simple delivery without PDDL - just put down if at delivery location
+        if (me.x === x && me.y === y) {
+            await client.emitPutdown();
+            return true;
+        } else {
+            throw ['Not at delivery location'];
+        }
     }
 
 }
@@ -772,3 +868,4 @@ planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
 planLibrary.push( IdleMove )
 planLibrary.push( PddlDelivery )
+planLibrary.push( SimpleDelivery )
