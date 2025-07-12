@@ -481,18 +481,21 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
+        console.log('parcel', parcel);
         if (
+            parcel && // Check if parcel is not null
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
             Number.isInteger(parcel.x) && Number.isInteger(parcel.y) &&
             !assignedToOtherAgentParcels.has(parcel.id)
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
-            if (pickupPath && pickupPath.cost < best_distance) {
+            if (pickupPath && pickupPath.path && pickupPath.cost < best_distance) {
                 second_best_distance = best_distance;
                 second_best_option = best_option;
                 best_distance = pickupPath.cost;
+                console.log('best_option', best_option);
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
-            } else if (pickupPath && pickupPath.cost < second_best_distance) {
+            } else if (pickupPath && pickupPath.path && pickupPath.cost < second_best_distance) {
                 second_best_distance = pickupPath.cost;
                 second_best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
             }
@@ -530,6 +533,7 @@ class IntentionRevision {
 
     async loop ( ) {
         await new Promise(res => setTimeout(res, 50));
+        // console.log(' we are in the loop');
         while ( true ) {
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
@@ -537,6 +541,7 @@ class IntentionRevision {
             
                 // Current intention
                 const intention = this.intention_queue[0];
+                console.log('intentisdasdasdasdasdasdasdadsdaon', intention.predicate[0]);
                 if (intention.predicate[0] == 'idle') {
                     await intention.achieve()
                     .catch( error => {
