@@ -78,28 +78,28 @@ function createTiles2D(width, height, tiles) {
     for (let tile of tiles) {
         tiles2D[tile.x][tile.y] = tile;
         
-        if (tile.type != 0)
-            pddlBeliefSet.declare("Traversable (" + tile.x + "," + tile.y + ")");
+        if (tile.type != 0) {
+            pddlBeliefSet.addObject("Tile_" + tile.x + "_" + tile.y);
+            pddlBeliefSet.declare("traversable Tile_" + tile.x + "_" + tile.y);
+        }
         else continue;
 
         // Check for delivery points (type 2)
-        if (tile.type === 2) {
+        if (tile.type === 2)
             deliveryCells.set("(" + tile.x + "," + tile.y + ")", tile);
-            pddlBeliefSet.declare("Delivery (" + tile.x + "," + tile.y + ")");
-        }
         else if (tile.type === 1)
             generatingCells.set("(" + tile.x + "," + tile.y + ")", tile);
 
         let right = tiles.find(t => t.x == tile.x + 1 && t.y == tile.y);
         if (right && right.type != 0) {
-            pddlBeliefSet.declare("Right (" + right.x + "," + right.y + ") (" + tile.x + "," + tile.y +")");
-            pddlBeliefSet.declare("Left (" + tile.x + "," + tile.y + ") (" + right.x + "," + right.y +")");
+            pddlBeliefSet.declare("right Tile_" + right.x + "_" + right.y + " Tile_" + tile.x + "_" + tile.y);
+            pddlBeliefSet.declare("left Tile_" + tile.x + "_" + tile.y + " Tile_" + right.x + "_" + right.y);
         }
 
         let up = tiles.find(t => t.x == tile.x && t.y == tile.y + 1);
         if (up && up.type != 0) {
-            pddlBeliefSet.declare("Up (" + up.x + "," + up.y + ") (" + tile.x + "," + tile.y +")");
-            pddlBeliefSet.declare("Down (" + tile.x + "," + tile.y + ") (" + up.x + "," + up.y +")");
+            pddlBeliefSet.declare("up Tile_" + up.x + "_" + up.y + " Tile_" + tile.x + "_" + tile.y);
+            pddlBeliefSet.declare("down Tile_" + tile.x + "_" + tile.y + " Tile_" + up.x + "_" + up.y);
         }
     }
 
@@ -245,7 +245,8 @@ function blockAgentPositions(agentId, occupiedCells) {
             // Remove this cell's edges
             global.graph.delete(cell);
         }
-    pddlBeliefSet.undeclare("Traversable " + cell);
+    const [cellX, cellY] = cell.replace(/[()]/g, '').split(',').map(Number);
+    pddlBeliefSet.undeclare("traversable Tile_" + cellX + "_" + cellY);
     }
 }
 
@@ -292,7 +293,8 @@ function unblockAgentPositions(agentId, occupiedCells) {
                 }
             }
 
-            pddlBeliefSet.declare("Traversable " + cell);
+            const [cellX, cellY] = cell.replace(/[()]/g, '').split(',').map(Number);
+            pddlBeliefSet.declare("traversable Tile_" + cellX + "_" + cellY);
         }
     }
 }
@@ -585,6 +587,13 @@ function getShortestPath(startX, startY, endX, endY) {
     return result;
 }
 
+function updateBeliefPosition(prevX, prevY) {
+    if (prevX && prevY)
+        pddlBeliefSet.undeclare("at Tile_" + prevX + "_" + prevY);
+    pddlBeliefSet.declare("at Tile_" + Math.ceil(me.x) + "_" + Math.ceil(me.y));
+    return [Math.ceil(me.x), Math.ceil(me.y)];
+}
+
 export {getShortestPath as getShortestPath}
 export {decayParcels as decayParcels}
 export {parseDecayInterval as parseDecayInterval}
@@ -603,3 +612,4 @@ export {getScore as getScore}
 export {carriedValue as carriedValue}
 export {stillValid as stillValid}
 export {isFree as isFree}
+export {updateBeliefPosition as updateBeliefPosition}

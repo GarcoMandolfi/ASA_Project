@@ -11,32 +11,47 @@ let config = {};
 const pddlBeliefSet = new Beliefset();
 const moveRight = new PddlAction(
     'moveRight',
-    '?x1 ?y1 ?x2 ?y2',
-    'and (At (?x1,?y1)) (Traversable (?x2, ?y2)) (Right (?x2, ?y2) (?x1,?y1))',
-    'and (At (?x2,?y2)) (not (At (?x1,?y1)))',
-    async () => await client.emitMove('right')
+    '?A ?B',
+    'and (at ?A) (traversable ?B) (right ?B ?A)',
+    'and (at ?B) (not (at ?A))',
+    // async () => await client.emitMove('right')
+    async () => console.log("RIGHT")
 );
 const moveLeft = new PddlAction(
     'moveLeft',
-    '?x1 ?y1 ?x2 ?y2',
-    'and (At (?x1,?y1)) (Traversable (?x2, ?y2)) (Left (?x2, ?y2) (?x1,?y1))',
-    'and (At (?x2,?y2)) (not (At (?x1,?y1)))',
-    async () => await client.emitMove('left')
+    '?A ?B',
+    'and (at ?A) (traversable ?B) (left ?B ?A)',
+    'and (at ?B) (not (at ?A))',
+    // async () => await client.emitMove('left')
+    async () => console.log("LEFT")
 );
 const moveUp = new PddlAction(
     'moveUp',
-    '?x1 ?y1 ?x2 ?y2',
-    'and (At (?x1,?y1)) (Traversable (?x2, ?y2)) (Up (?x2, ?y2) (?x1,?y1))',
-    'and (At (?x2,?y2)) (not (At (?x1,?y1)))',
-    async () => await client.emitMove('up')
+    '?A ?B',
+    'and (at ?A) (traversable ?B) (up ?B ?A)',
+    'and (at ?B) (not (at ?A))',
+    // async () => await client.emitMove('up')
+    async () => console.log("UP")
 );
 const moveDown = new PddlAction(
     'moveDown',
-    '?x1 ?y1 ?x2 ?y2',
-    'and (At (?x1,?y1)) (Traversable (?x2, ?y2)) (Down (?x2, ?y2) (?x1,?y1))',
-    'and (At (?x2,?y2)) (not (At (?x1,?y1)))',
-    async () => await client.emitMove('down')
+    '?A ?B',
+    'and (at ?A) (traversable ?B) (up ?A ?B)',
+    'and (at ?B) (not (at ?A))',
+    // async () => await client.emitMove('down')
+    async () => console.log("DOWN")
 );
+// @ts-ignore
+const pddlDomain = new PddlDomain( 'Deliveroo', moveRight, moveLeft, moveUp, moveDown );
+pddlDomain.addPredicate('at ?A');
+pddlDomain.addPredicate('traversable ?A');
+pddlDomain.addPredicate('up ?A ?B');
+pddlDomain.addPredicate('down ?A ?B');
+pddlDomain.addPredicate('right ?A ?B');
+pddlDomain.addPredicate('left ?A ?B');
+
+console.log(pddlDomain.toPddlString());
+
 
 client.onConfig(cfg => {
     
@@ -284,13 +299,6 @@ class IntentionRevision {
 
     async loop ( ) {
         await new Promise(res => setTimeout(res, 50));
-
-        if (Number.isInteger(me.x) && Number.isInteger(me.y)) {
-            if (prevX && prevY)
-                pddlBeliefSet.undeclare("At (" + prevX + "," + prevY + ")");
-            pddlBeliefSet.declare("At (" + me.x + "," + me.y + ")");
-            [prevX, prevY] = [me.x, me.y];
-        }
 
         while ( true ) {
             // Consumes intention_queue if not empty
@@ -555,6 +563,7 @@ class GoDeliver extends Plan {
 
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        await this.subIntention( ['pddl_move', x, y]);
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await client.emitPutdown()
@@ -594,6 +603,32 @@ class BlindMove extends Plan {
             return true;
         }
     }
+}
+
+class PddlMove extends Plan {
+
+    static isApplicableTo(pddl_move) {
+        return pddl_move == 'pddl_move';
+    }
+
+    async execute(pddl_move, x, y) {
+        if (this.stopped) throw ['stopped'];
+        [prevX, prevY] = utils.updateBeliefPosition(prevX, prevY);
+
+        let pddlProblem = new PddlProblem(
+            'Deliveroo',
+            pddlBeliefSet.objects.join(' '),
+            pddlBeliefSet.toPddlString(),
+            'and (at Tile_' + x + '_' + y + ') (not (at Tile_' + me.x + '_' + me.y + '))'
+        );
+
+        console.log(pddlProblem.toPddlString());
+
+        let plan = await onlineSolver(pddlDomain.toPddlString(), pddlProblem.toPddlString());
+        console.log("I BUILT A PLAN " + plan);
+        return true;
+    }
+
 }
 
 class IdleMove extends Plan {
@@ -715,3 +750,4 @@ planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
 planLibrary.push( IdleMove )
+planLibrary.push( PddlMove )
