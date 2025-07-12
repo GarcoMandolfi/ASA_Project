@@ -686,11 +686,10 @@ class GoDeliver extends Plan {
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         
-        // Use path-based delivery as primary method (more reliable)
+        // Try PDDL delivery first
         try {
-            this.log('Using path-based delivery');
-            await this.subIntention( ['go_to', x, y, path] );
-            await this.subIntention( ['simple_deliver', x, y] );
+            this.log('Using PDDL delivery');
+            await this.subIntention( ['pddl_deliver', x, y]);
             // Add a longer delay after successful delivery to prevent immediate movement
             await new Promise(resolve => setTimeout(resolve, 500));
             
@@ -705,9 +704,10 @@ class GoDeliver extends Plan {
             
             return true;
         } catch (error) {
-            this.log('Path-based delivery failed, trying PDDL delivery as fallback');
-            // Fallback: use PDDL delivery
-            await this.subIntention( ['pddl_deliver', x, y]);
+            this.log('PDDL delivery failed, trying path-based delivery as fallback');
+            // Fallback: use path-based delivery
+            await this.subIntention( ['go_to', x, y, path] );
+            await this.subIntention( ['simple_deliver', x, y] );
             // Add a longer delay after successful delivery to prevent immediate movement
             await new Promise(resolve => setTimeout(resolve, 500));
             
@@ -870,6 +870,9 @@ class PddlDelivery extends Plan {
             pddlBeliefSet.toPddlString(),
             'and (at Tile_' + x + '_' + y + ') (not (canDeliver))'
         );
+        
+        this.log(`PDDL Problem - Current position: (${me.x}, ${me.y}), Target: (${x}, ${y})`);
+        this.log(`PDDL Problem - Carrying parcels: ${carriedParcels.size > 0 ? 'Yes' : 'No'}`);
         utils.pddlRemoveDoublePredicates();
 
         let plan = await onlineSolver(pddlDomain.toPddlString(), pddlProblem.toPddlString());
@@ -923,11 +926,16 @@ class PddlDelivery extends Plan {
         
         // Execute the plan
         try {
+            this.log(`Executing PDDL plan with ${plan.length} steps: ${plan.join(' -> ')}`);
+            
             // Execute the plan step by step and stop after delivery
+            let putdownExecuted = false;
+            
             for (let i = 0; i < plan.length; i++) {
                 if (this.stopped) throw ['stopped'];
                 
                 const step = plan[i];
+                this.log(`Executing step ${i + 1}/${plan.length}: ${step}`);
                 
                 // Check if this is a putdown action and we're not at the delivery location yet
                 if (step && String(step).toLowerCase().includes('putdown')) {
@@ -939,6 +947,7 @@ class PddlDelivery extends Plan {
                         // Set delivery flag to prevent immediate movement
                         justDelivered = true;
                         lastDeliveryTime = Date.now();
+                        putdownExecuted = true;
                         // Add a longer delay after delivery to prevent immediate movement
                         await new Promise(resolve => setTimeout(resolve, 300));
                         break;
@@ -960,6 +969,15 @@ class PddlDelivery extends Plan {
                 
                 // Add a small delay between steps
                 await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            
+            // If we finished the plan but didn't execute PUTDOWN and we're at the delivery location, do it manually
+            if (!putdownExecuted && Math.abs(me.x - x) < 0.1 && Math.abs(me.y - y) < 0.1 && carriedParcels.size > 0) {
+                this.log('PDDL plan completed but PUTDOWN not executed. Executing PUTDOWN manually.');
+                await client.emitPutdown();
+                justDelivered = true;
+                lastDeliveryTime = Date.now();
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
             return true;
         } catch (error) {
