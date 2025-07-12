@@ -285,6 +285,14 @@ setInterval(() => {
     
 }, 1000);
 
+// Clear assignedToOtherAgentParcels every 5 seconds
+setInterval(() => {
+    if (assignedToOtherAgentParcels.size > 0) {
+        console.log('Clearing assignedToOtherAgentParcels:', assignedToOtherAgentParcels.size, 'parcels');
+        assignedToOtherAgentParcels.clear();
+    }
+}, 5000);
+
 
 client.onAgentsSensing(agents => {
     const seenAgentIds = new Set();
