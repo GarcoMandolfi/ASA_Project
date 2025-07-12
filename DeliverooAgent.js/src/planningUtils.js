@@ -1,5 +1,6 @@
+import { PddlDomain } from "@unitn-asa/pddl-client";
 import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells} from "./PlanningAgent.js";
-import {pddlBeliefSet} from "./PlanningAgent.js";
+import {pddlBeliefSet, pddlDomain} from "./PlanningAgent.js";
 
 
 
@@ -80,13 +81,16 @@ function createTiles2D(width, height, tiles) {
         
         if (tile.type != 0) {
             pddlBeliefSet.addObject("Tile_" + tile.x + "_" + tile.y);
+            pddlBeliefSet.declare("tile Tile_" + tile.x + "_" + tile.y);
             pddlBeliefSet.declare("traversable Tile_" + tile.x + "_" + tile.y);
         }
         else continue;
 
         // Check for delivery points (type 2)
-        if (tile.type === 2)
+        if (tile.type === 2) {
             deliveryCells.set("(" + tile.x + "," + tile.y + ")", tile);
+            pddlBeliefSet.declare("delivery Tile_" + tile.x + "_" + tile.y);
+        }
         else if (tile.type === 1)
             generatingCells.set("(" + tile.x + "," + tile.y + ")", tile);
 
@@ -594,6 +598,19 @@ function updateBeliefPosition(prevX, prevY) {
     return [Math.ceil(me.x), Math.ceil(me.y)];
 }
 
+function pddlRemoveDoublePredicates() {
+
+    const uniqePreds = new Set();
+
+    pddlDomain.predicates = pddlDomain.predicates.filter(predicate => {
+        const name = predicate.split(' ')[0]; // e.g. 'at' from 'at ?A'
+        if (uniqePreds.has(name)) return false;
+        uniqePreds.add(name);
+        return true;
+    })
+
+}
+
 export {getShortestPath as getShortestPath}
 export {decayParcels as decayParcels}
 export {parseDecayInterval as parseDecayInterval}
@@ -613,3 +630,4 @@ export {carriedValue as carriedValue}
 export {stillValid as stillValid}
 export {isFree as isFree}
 export {updateBeliefPosition as updateBeliefPosition}
+export {pddlRemoveDoublePredicates as pddlRemoveDoublePredicates}

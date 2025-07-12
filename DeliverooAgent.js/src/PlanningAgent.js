@@ -12,45 +12,57 @@ const pddlBeliefSet = new Beliefset();
 const moveRight = new PddlAction(
     'moveRight',
     '?A ?B',
-    'and (at ?A) (traversable ?B) (right ?B ?A)',
+    'and (tile ?A) (tile ?B) (at ?A) (traversable ?B) (right ?B ?A)',
     'and (at ?B) (not (at ?A))',
-    // async () => await client.emitMove('right')
-    async () => console.log("RIGHT")
+    async () => await client.emitMove('right')
 );
 const moveLeft = new PddlAction(
     'moveLeft',
     '?A ?B',
-    'and (at ?A) (traversable ?B) (left ?B ?A)',
+    'and (tile ?A) (tile ?B) (at ?A) (traversable ?B) (left ?B ?A)',
     'and (at ?B) (not (at ?A))',
-    // async () => await client.emitMove('left')
-    async () => console.log("LEFT")
+    async () => await client.emitMove('left')
 );
 const moveUp = new PddlAction(
     'moveUp',
     '?A ?B',
-    'and (at ?A) (traversable ?B) (up ?B ?A)',
+    'and (tile ?A) (tile ?B) (at ?A) (traversable ?B) (up ?B ?A)',
     'and (at ?B) (not (at ?A))',
-    // async () => await client.emitMove('up')
-    async () => console.log("UP")
+    async () => await client.emitMove('up')
 );
 const moveDown = new PddlAction(
     'moveDown',
     '?A ?B',
-    'and (at ?A) (traversable ?B) (up ?A ?B)',
+    'and (tile ?A) (tile ?B) (at ?A) (traversable ?B) (down ?B ?A)',
     'and (at ?B) (not (at ?A))',
-    // async () => await client.emitMove('down')
-    async () => console.log("DOWN")
+    async () => await client.emitMove('down')
+);
+const putDown = new PddlAction(
+    'putDown',
+    '?A',
+    'and (tile ?A) (at ?A) (delivery ?A) (canDeliver)',
+    'not (canDeliver)',
+    async () => await client.emitPutdown()
 );
 // @ts-ignore
-const pddlDomain = new PddlDomain( 'Deliveroo', moveRight, moveLeft, moveUp, moveDown );
+const pddlDomain = new PddlDomain( 'Deliveroo', moveRight, moveLeft, moveUp, moveDown, putDown );
+pddlDomain.addPredicate('tile ?A');
+pddlDomain.addPredicate('delivery ?A');
 pddlDomain.addPredicate('at ?A');
 pddlDomain.addPredicate('traversable ?A');
-pddlDomain.addPredicate('up ?A ?B');
-pddlDomain.addPredicate('down ?A ?B');
-pddlDomain.addPredicate('right ?A ?B');
-pddlDomain.addPredicate('left ?A ?B');
+pddlDomain.addPredicate('up ?B ?A');
+pddlDomain.addPredicate('down ?B ?A');
+pddlDomain.addPredicate('right ?B ?A');
+pddlDomain.addPredicate('left ?B ?A');
+pddlDomain.addPredicate('canDeliver');
 
-console.log(pddlDomain.toPddlString());
+
+const pddlExecutor = new PddlExecutor(
+    {name: 'moveRight', executor: async () => await client.emitMove('right')},
+    {name: 'moveLeft', executor: async () => await client.emitMove('left')},
+    {name: 'moveUp', executor: async () => await client.emitMove('up')},
+    {name: 'moveDown', executor: async () => await client.emitMove('down')},
+    {name: 'putDown', executor: async () => await client.emitPutdown()});
 
 
 client.onConfig(cfg => {
@@ -100,7 +112,7 @@ const deliveryCells = new Map();
 const generatingCells = new Map();
 
 export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells}
-export {pddlBeliefSet}
+export {pddlBeliefSet, pddlDomain}
 
 client.onMap((width, height, tiles) => {
     deliveryCells.clear();
@@ -301,6 +313,12 @@ class IntentionRevision {
         await new Promise(res => setTimeout(res, 50));
 
         while ( true ) {
+
+            if (carriedParcels.size == 0)
+                pddlBeliefSet.undeclare('canDeliver');
+            else
+                pddlBeliefSet.declare('canDeliver');
+
             // Consumes intention_queue if not empty
             if ( this.intention_queue.length > 0 ) {
             
@@ -563,10 +581,10 @@ class GoDeliver extends Plan {
 
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        await this.subIntention( ['pddl_move', x, y]);
-        await this.subIntention( ['go_to', x, y, path] );
+        await this.subIntention( ['pddl_deliver', x, y]);
+        // await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
-        await client.emitPutdown()
+        // await client.emitPutdown()
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         return true;
     }
@@ -605,13 +623,13 @@ class BlindMove extends Plan {
     }
 }
 
-class PddlMove extends Plan {
+class PddlDelivery extends Plan {
 
-    static isApplicableTo(pddl_move) {
-        return pddl_move == 'pddl_move';
+    static isApplicableTo(pddl_deliver) {
+        return pddl_deliver == 'pddl_deliver';
     }
 
-    async execute(pddl_move, x, y) {
+    async execute(pddl_deliver, x, y) {
         if (this.stopped) throw ['stopped'];
         [prevX, prevY] = utils.updateBeliefPosition(prevX, prevY);
 
@@ -619,13 +637,20 @@ class PddlMove extends Plan {
             'Deliveroo',
             pddlBeliefSet.objects.join(' '),
             pddlBeliefSet.toPddlString(),
-            'and (at Tile_' + x + '_' + y + ') (not (at Tile_' + me.x + '_' + me.y + '))'
+            'and (at Tile_' + x + '_' + y + ') (not (at Tile_' + me.x + '_' + me.y + ')) (not (canDeliver))'
         );
-
-        console.log(pddlProblem.toPddlString());
+        utils.pddlRemoveDoublePredicates();
 
         let plan = await onlineSolver(pddlDomain.toPddlString(), pddlProblem.toPddlString());
-        console.log("I BUILT A PLAN " + plan);
+        
+        while( plan.length > 0){
+            if (this.stopped) throw ['stopped'];
+
+            let step = plan.shift();
+
+            pddlExecutor.exec ([step]);
+        }
+
         return true;
     }
 
@@ -750,4 +775,4 @@ planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )
 planLibrary.push( IdleMove )
-planLibrary.push( PddlMove )
+planLibrary.push( PddlDelivery )
