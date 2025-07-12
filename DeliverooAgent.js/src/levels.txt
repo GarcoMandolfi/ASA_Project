@@ -1,0 +1,40 @@
+
+SINGLE AGENT: 
+
+25_c1_1 COOL
+25_c1_2 COOL
+25_c1_3 KINDA COOL : its our logic, it is how it is (explore) 
+25_c1_4 KINDA COOL : its our logic, it is how it is (explore)
+25_c1_5 COOL 
+25_c1_6 COOL
+25_c1_7 KINDA COOL : its our logic, it is how it is (explore)
+25_c1_8 BREAK with bunch of AGENTS FIXED, 
+25_c1_9 COOL
+
+
+
+MULTI AGENTS: 
+
+25_c2_1 KINDA COOL : its our logic, it is how it is (explore)
+25_c2_2 KINDA COOL : its our logic, it is how it is (explore)
+25_c2_3 COOL
+25_c2_4 KINDA COOL its our logic, it is how it is (getScore)
+25_c2_5 KINDA COOL : its our logic, it is how it is (explore)
+25_c2_6 KINDA COOL its our logic, it is how it is (getScore)
+25_c2_7 KINDA COOL its our logic, it is how it is (explore)
+
+25_c2_hallway COOL : small detail could be better
+
+
+
+PDDL + SINGLE AGENT: 
+
+25_c1_1 COOL
+25_c1_2 KINDA COOL its our logic, it is how it is (explore)
+25_c1_3 KINDA COOL : its our logic, it is how it is (explore) 
+25_c1_4 KINDA COOL : its our logic, it is how it is (explore)
+25_c1_5 COOL 
+25_c1_6 COOL
+25_c1_7 didn't check
+25_c1_8 didn't check
+25_c1_9 didn't check 
