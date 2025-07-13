@@ -1491,16 +1491,16 @@ class GoDeliverAgent extends Plan {
             if (dist <= 4) {
                 // Check if we can move after putting down parcels
                 if (!this.canMoveAfterPutdown()) {
-                    console.log('Cannot move after putdown, skipping delivery to other agent');
+                    // console.log('Cannot move after putdown, skipping delivery to other agent');
                     return true;
                 }
                 
-                console.log('Can move after putdown, proceeding with delivery');
+                // console.log('Can move after putdown, proceeding with delivery');
                 
                 // Put down all carried parcels and assign them to the other agent
                 const parcelsToPick = Array.from(carriedParcels.keys());
-                console.log('assigned parcels before putdown', otherAgentParcels);
-                console.log('Parcels to pick', parcelsToPick);
+                // console.log('assigned parcels before putdown', otherAgentParcels);
+                // console.log('Parcels to pick', parcelsToPick);
                 
                 for (const parcelId of parcelsToPick) {
                     let parcel = freeParcels.get(parcelId);
@@ -1512,7 +1512,7 @@ class GoDeliverAgent extends Plan {
                 
                 await client.emitPutdown();
                 if (this.stopped) throw ['stopped']; // Check if stopped
-                console.log('assigned parcels after putdown', otherAgentParcels);
+                // console.log('assigned parcels after putdown', otherAgentParcels);
                 
                 // Move away from the drop location to avoid blocking the other agent
                 const directions = [];
