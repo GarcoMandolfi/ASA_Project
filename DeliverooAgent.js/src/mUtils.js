@@ -227,14 +227,25 @@ function blockAgentPositions(agentId, occupiedCells) {
  */
 function unblockAgentPositions(agentId, occupiedCells) {
     if (!global.graph || !global.nodePositions) return;
+
+    for (let cell of occupiedCells) {
+        // Remove parentheses and split to get x and y as numbers
+        const [x, y] = cell.replace(/[()]/g, '').split(',').map(Number);
+        
+        // Check if this cell should be a valid node (not a wall)
+        const tile = global.tiles2D[x][y];
+        if (tile && tile.type !== 0) {
+            // Add the cell back to the graph
+            global.graph.set(cell, new Set());
+        }
+    }
+
     for (let cell of occupiedCells) {
         // Remove parentheses and split to get x and y as numbers
         const [x, y] = cell.replace(/[()]/g, '').split(',').map(Number);
         // Check if this cell should be a valid node (not a wall)
         const tile = global.tiles2D[x][y];
         if (tile && tile.type !== 0) {
-            // Add the cell back to the graph
-            global.graph.set(cell, new Set());
             // Add edges to adjacent cells that are also unblocked
             const directions = [
                 { dx: -1, dy: 0 }, // left
