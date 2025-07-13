@@ -157,7 +157,13 @@ const deliveryCells = new Map();
  */
 const generatingCells = new Map();
 
-export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells}
+
+/**
+ * @type { Array<{id: string, x: number, y: number, generatingCellsNearby: number, lastSeen: number}> }
+ */
+const candidates = [];
+
+export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, candidates}
 export {pddlBeliefSet, pddlDomain}
 
 client.onMap((width, height, tiles) => {
@@ -171,8 +177,156 @@ client.onMap((width, height, tiles) => {
     global.mapWidth = width;
     global.mapHeight = height;
     global.tiles2D = tiles2D;
+    makeCandidates();
 
 })
+
+function makeCandidates() {
+    if (!global.graph || !global.nodePositions) {
+        console.log('Graph not ready for candidate generation');
+        return;
+    }
+
+    const parcelObsDistance = config.PARCELS_OBSERVATION_DISTANCE || 5;
+    const allCells = [];
+    const processedCells = new Set(); // Track processed generating cells
+    
+    // Analyze each generating cell (green cell) only
+    for (const [nodeId, position] of global.nodePositions) {
+        const { x, y } = position;
+        
+        // Only consider generating cells as candidates
+        const isGeneratingCell = generatingCells.has(nodeId);
+        if (!isGeneratingCell) continue;
+        
+        // Skip if already processed (directly connected to a previous cell)
+        if (processedCells.has(nodeId)) continue;
+        
+        let generatingCellsNearby = 0;
+        const directlyConnectedGeneratingCells = new Set(); // Track cells connected without grey cells
+        
+        // Check all other generating cells to see if they're within observation distance
+        for (const [otherNodeId, otherPosition] of global.nodePositions) {
+            if (nodeId === otherNodeId) continue;
+            
+            // Check if the other cell is also a generating cell
+            const isOtherGeneratingCell = generatingCells.has(otherNodeId);
+            if (!isOtherGeneratingCell) continue;
+            
+            // Calculate shortest path distance
+            const pathResult = utils.getShortestPath(x, y, otherPosition.x, otherPosition.y);
+            if (pathResult && pathResult.cost !== null && pathResult.cost <= parcelObsDistance) {
+                generatingCellsNearby++;
+                
+                // Check if this cell is directly connected (path length = 1, no grey cells in between)
+                if (pathResult.path) {
+                    // Check if the path contains only generating cells (no grey cells)
+                    let hasOnlyGeneratingCells = true;
+                    for (const pathNodeId of pathResult.path) {
+                        if (!generatingCells.has(pathNodeId)) {
+                            hasOnlyGeneratingCells = false;
+                            break;
+                        }
+                    }
+                    if (hasOnlyGeneratingCells) {
+                        directlyConnectedGeneratingCells.add(otherNodeId);
+                    }
+                }
+            }
+        }
+        
+        // Add generating cell to list
+        allCells.push({
+            id: nodeId,
+            x: x,
+            y: y,
+            generatingCellsNearby: generatingCellsNearby,
+            lastSeen: Date.now()
+        });
+        
+        // Mark directly connected generating cells as processed to avoid redundant calculations
+        processedCells.add(nodeId);
+        for (const connectedCellId of directlyConnectedGeneratingCells) {
+            processedCells.add(connectedCellId);
+        }
+    }
+    
+    // Sort by number of generating cells nearby (descending)
+    allCells.sort((a, b) => b.generatingCellsNearby - a.generatingCellsNearby);
+    
+    // Select top 3 candidates that are farthest from each other
+    const selectedCandidates = [];
+    
+    if (allCells.length > 0) {
+        // Select first candidate (highest score)
+        selectedCandidates.push(allCells[0]);
+        
+        if (allCells.length > 1) {
+            // Select second candidate: farthest from the first
+            let maxDistance = 0;
+            let secondCandidate = null;
+            
+            for (let i = 1; i < allCells.length; i++) {
+                const distance = utils.manhattanDistance(
+                    { x: allCells[i].x, y: allCells[i].y },
+                    { x: selectedCandidates[0].x, y: selectedCandidates[0].y }
+                );
+                if (distance > maxDistance) {
+                    maxDistance = distance;
+                    secondCandidate = allCells[i];
+                }
+            }
+            
+            if (secondCandidate) {
+                selectedCandidates.push(secondCandidate);
+            }
+            
+            if (allCells.length > 2) {
+                // Select third candidate: farthest from both first and second
+                maxDistance = 0;
+                let thirdCandidate = null;
+                
+                for (let i = 1; i < allCells.length; i++) {
+                    const cell = allCells[i];
+                    if (cell === secondCandidate) continue; // Skip already selected
+                    
+                    // Calculate minimum distance to both selected candidates
+                    const distanceToFirst = utils.manhattanDistance(
+                        { x: cell.x, y: cell.y },
+                        { x: selectedCandidates[0].x, y: selectedCandidates[0].y }
+                    );
+                    const distanceToSecond = utils.manhattanDistance(
+                        { x: cell.x, y: cell.y },
+                        { x: selectedCandidates[1].x, y: selectedCandidates[1].y }
+                    );
+                    const minDistance = Math.min(distanceToFirst, distanceToSecond);
+                    
+                    if (minDistance > maxDistance) {
+                        maxDistance = minDistance;
+                        thirdCandidate = cell;
+                    }
+                }
+                
+                if (thirdCandidate) {
+                    selectedCandidates.push(thirdCandidate);
+                }
+            }
+        }
+    }
+    
+    // Update the global candidates list
+    candidates.length = 0; // Clear existing candidates
+    candidates.push(...selectedCandidates);
+    if (candidates.length > 0) {
+        while (candidates.length < 3) {
+            candidates.push(candidates[0]);
+        }   
+    }
+    
+    console.log('Generated candidates:', candidates.map(c => 
+        `${c.id} (${c.x},${c.y}) with ${c.generatingCellsNearby} generating cells nearby`
+    ));
+}
 
 client.onYou( ( {id, name, x, y, score} ) => {
     me.id = id
@@ -988,31 +1142,31 @@ class IdleMove extends Plan {
 
     async execute(go_to) {
         if (this.stopped) throw ['stopped'];
-
-        let inObsRange = false;
-        for (const tile of generatingCells.values()) {
-            if (utils.manhattanDistance({x: me.x, y: me.y}, {x: tile.x, y: tile.y}) <= config.PARCELS_OBSERVATION_DISTANCE) {
-                inObsRange = true;
-                break;
-            }
-        }
-        if (generatingCells.size > 0 && !inObsRange) {
-            let closestTile = undefined;
-            let shortestPath = undefined;
-
-            for (const tile of generatingCells.values()) {
-                const path = utils.getShortestPath(me.x, me.y, tile.x, tile.y).path; // Replace with your actual pathfinding
-                if (path && (!shortestPath || path.length < shortestPath.length)) {
-                    shortestPath = path;
-                    closestTile = tile;
+        let noCandidates = true;
+        let bestCandidate = null;
+        let bestCandidatePath = null;
+        if (candidates.length > 0) {
+            // Sort candidates by lastSeen (oldest first)
+            const sortedCandidates = [...candidates].sort((a, b) => a.lastSeen - b.lastSeen);
+            
+            // Find the first candidate with a valid path
+            for (const candidate of sortedCandidates) {
+                const shortestPath = utils.getShortestPath(me.x, me.y, candidate.x, candidate.y).path;
+                if (shortestPath) {
+                    noCandidates = false;
+                    candidate.lastSeen = Date.now();
+                    bestCandidate = candidate;
+                    bestCandidatePath = shortestPath;
+                    break;
                 }
             }
-
-            if (shortestPath) {
-                await this.subIntention( ['go_to', closestTile.x, closestTile.y, shortestPath] );
+            if (!noCandidates) {
+                await this.subIntention( ['go_to', bestCandidate.x, bestCandidate.y, bestCandidatePath] );
+                return true;
             }
         }
-        else{
+        if(noCandidates){
+
 
             const x = me.x;
             const y = me.y;
