@@ -496,8 +496,8 @@ function stillValid (predicate) {
             if (p && p.carriedBy || p && pickupPath === null || otherAgentParcels.has(id)) return false;
             return true;
         case 'go_deliver':
-            // let deliveryPath = predicate[4];
-            if (carriedParcels.size == 0 /*|| deliveryPath.isPathValid === false*/)
+            let deliveryPath = predicate[3];
+            if (carriedParcels.size == 0 || deliveryPath === null   )
                 return false;
             return true;
         case 'go_deliver_agent':

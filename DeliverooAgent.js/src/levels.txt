@@ -48,13 +48,26 @@ CLEANING CODE SUGGESTIONS :
 
 
 SINGLE AGENT: 
-1- if no candidate for idle move
+1-      case 'go_deliver':
+            // Check if we're still carrying parcels
+            if (carriedParcels.size == 0)
+                return false;
+                check the Path for StillValid 
 
 
 MUTLI AGENTS:
-1- if no candidate for idle move
+
+1-      case 'go_deliver':
+            // Check if we're still carrying parcels
+            if (carriedParcels.size == 0)
+                return false;
+                check the Path for StillValid 
 
 
 PLANNING AGENTS: 
-1- if no candidate for idle move
+1-      case 'go_deliver':
+            // Check if we're still carrying parcels
+            if (carriedParcels.size == 0)
+                return false;
+                check the Path for StillValid 
 

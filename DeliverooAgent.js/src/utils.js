@@ -486,8 +486,7 @@ function getScore ( predicate ) {
 
     if (type === 'go_deliver') {
         // Score delivery intentions based on reward vs. decay during travel
-        const x = predicate[1];
-        const y = predicate[2];
+
         let deliveryPath = predicate[3];
         let deliveryReward = carriedValue();
         if (deliveryPath == null)   
@@ -513,8 +512,6 @@ function getScore ( predicate ) {
 
     if (type === 'go_pick_up') {
         // Score pickup intentions based on reward vs. travel time and decay
-        const x = predicate[1];
-        const y = predicate[2];
 
         let pickupPath = predicate[4];
         if (pickupPath == null)
@@ -577,7 +574,8 @@ function stillValid (predicate) {
             return true;
         case 'go_deliver':
             // Check if we're still carrying parcels
-            if (carriedParcels.size == 0)
+            let deliveryPath = predicate[3];
+            if (carriedParcels.size == 0 || deliveryPath === null)
                 return false;
             return true;
         case 'idle':
