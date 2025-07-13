@@ -661,8 +661,6 @@ class IntentionRevision {
                 const intention = this.intention_queue[0];
                 
                 // Validate if the intention is still achievable
-                let id = intention.predicate[2]
-                let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
                     this.intention_queue.shift();
                     continue;

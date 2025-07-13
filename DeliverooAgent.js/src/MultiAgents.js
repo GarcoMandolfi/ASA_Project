@@ -481,7 +481,6 @@ setInterval(() => {
  */
 setInterval(() => {
     if (otherAgentParcels.size > 0) {
-        console.log('Clearing otherAgentParcels:', otherAgentParcels.size, 'parcels');
         otherAgentParcels.clear();
     }
 }, 5000);
@@ -594,7 +593,6 @@ client.onParcelsSensing(async (pp) => {
             !pp.find(p => p.id === parcel.id)
         ) {
             freeParcels.delete(id);
-            console.log("someone took this parcel", id);
             // Notify the other agent to delete this parcel
             client.emitSay(OTHER_AGENT_ID, { type: 'deleteParcel', parcelId: id });
         }
@@ -637,24 +635,7 @@ client.onParcelsSensing(async (pp) => {
 // OPTIONS GENERATION AND FILTERING
 // ============================================================================
 
-/**
- * Master intention reviser system (placeholder for future coordination)
- * Currently only runs if both agents are in the map and only for Agent 1
- */
-function masterIntentionReviser() {
-    // Only run if both agents are in the map
-    if (!otherAgents.has(OTHER_AGENT_ID) || !otherAgents.has(MY_AGENT_ID)) {
-        return;
-    }
-    
-    // Only Agent 1 (master) runs this
-    if (MY_AGENT_ID !== AGENT1_ID) {
-        return;
-    }
-    
-    // Get Agent 2's top 2 intentions from the message
-    // This will be implemented in the message handler
-}
+
 
 /**
  * Generate and evaluate possible actions for the agent
@@ -665,8 +646,7 @@ function generateOptions () {
 
     let best_option = null;
     let best_distance = Number.MAX_VALUE;
-    let second_best_option = null;
-    let second_best_distance = Number.MAX_VALUE;
+
 
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
@@ -687,6 +667,7 @@ function generateOptions () {
                 ];
                 
                 let deliveryNeighbour = {x: other.x, y: other.y}; // fallback to agent position
+                // we find one of the adjacent positions that is a valid node and has a path to the our agent
                 for (const pos of adjacentPositions) {
                     const nodeId = "(" + pos.x + "," + pos.y + ")";
                     if (global.graph.has(nodeId)) {
@@ -696,6 +677,7 @@ function generateOptions () {
                         }
                     }
                 }
+                // we get the path to the other agent's neighbour
                 const pathToOther = utils.getShortestPath(me.x, me.y, deliveryNeighbour.x, deliveryNeighbour.y);
                 if (pathToOther && pathToOther.path) {
                     best_option = ['go_deliver_agent', other.x, other.y, pathToOther.path];
@@ -707,8 +689,7 @@ function generateOptions () {
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
-        // Uncomment for debugging:
-        // console.log('parcel', parcel);
+
         if (
             parcel && // Check if parcel is not null
             Number.isInteger(me.x) && Number.isInteger(me.y) &&
@@ -717,16 +698,9 @@ function generateOptions () {
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
             if (pickupPath && pickupPath.path && pickupPath.cost < best_distance) {
-                second_best_distance = best_distance;
-                second_best_option = best_option;
                 best_distance = pickupPath.cost;
-                // Uncomment for debugging:
-                // console.log('best_option', best_option);
                 best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
-            } else if (pickupPath && pickupPath.path && pickupPath.cost < second_best_distance) {
-                second_best_distance = pickupPath.cost;
-                second_best_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
-            }
+            } 
         }
     }
     
@@ -795,8 +769,7 @@ class IntentionRevision {
                 
                 // Validate that the intention is still achievable
                 // Check if the target parcel still exists and is valid
-                let id = intention.predicate[3]
-                let p = freeParcels.get(id)
+               
                 if ( !utils.stillValid(intention.predicate) ) {
                     this.intention_queue.shift();
                     continue;
@@ -807,21 +780,16 @@ class IntentionRevision {
                 if (intention.predicate[0] == 'go_pick_up') {
                     if (otherAgents.has(OTHER_AGENT_ID) && MY_AGENT_ID !== AGENT1_ID) {
                         // Send negotiation request with parcel ID and score
+                        let id = intention.predicate[3]
                         let reply = await client.emitAsk(OTHER_AGENT_ID, `drop_intention?${id}|${utils.getScore(intention.predicate)}`);
                         if (reply && reply['answer'] === 'yes') {
                             // Other agent has higher priority - drop this intention
-                            console.log('dropping intention cause said yesssss', intention.predicate[0]);
                             this.intention_queue.shift();
                             otherAgentParcels.add(id);
-                            console.log('otherAgentParcels', otherAgentParcels);
-                            console.log('freeParcels id', freeParcels);
                             continue;
                         }
                         if (reply && reply['answer'] === 'no') {
                             // We have higher priority - keep the intention
-                            console.log('NOT dropping intention cause said noooooo', intention.predicate[0]);
-                            console.log('otherAgentParcels', otherAgentParcels);
-                            console.log('freeParcels id', freeParcels);
                         }
                     }
                 }
@@ -843,6 +811,14 @@ class IntentionRevision {
             // Yield control to allow other operations
             await new Promise( res => setImmediate( res ) );
         }
+    }
+
+    /**
+     * Log messages from sub-intentions and plans
+     * @param { ...any } args - Arguments to log
+     */
+    log(...args) {
+        console.log(...args);
     }
 
     /**
@@ -960,6 +936,8 @@ class Intention {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
+        else
+            console.log( ...args )
     }
 
     /**
@@ -1088,6 +1066,8 @@ class Plan {
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
+        else
+            console.log( ...args )
     }
 
     /**
@@ -1103,7 +1083,7 @@ class Plan {
      * @returns { Promise<any> } - Result of sub-intention execution
      */
     async subIntention ( predicate ) {
-        const sub_intention = new Intention( this, predicate );
+        const sub_intention = new Intention( this.#parent, predicate );
         this.#sub_intentions.push( sub_intention );
         return sub_intention.achieve();
     }

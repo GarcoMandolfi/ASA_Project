@@ -98,3 +98,73 @@ PLANNING AGENTS:
     //     utils.findClosestDelivery(me.x, me.y);
     // }
     in OnYou
+
+
+
+
+
+
+    in all agents: 
+
+   1- generate options is wrong : ( but then getscore should change as well )
+
+
+    function generateOptions () {
+    const carriedTotal = utils.carriedValue();
+
+    let best_delivery_option = null;
+    let best_pickup_option = null;
+    let best_pickup_distance = Number.MAX_VALUE;
+
+    // Check delivery option if carrying valuable parcels
+    if (carriedTotal != 0) {
+        const bestDelivery = utils.findClosestDelivery(me.x, me.y);
+        if (bestDelivery && bestDelivery.deliveryPoint) {
+            best_delivery_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
+            if (best_delivery_option && bestDelivery.path && bestDelivery.path.length > 0) {
+                myAgent.push(best_delivery_option);
+            }
+        }
+    }
+
+    // Always consider pickup options too, and pick nearest
+    for (const parcel of freeParcels.values()) {
+        if (
+            Number.isInteger(me.x) && Number.isInteger(me.y) &&
+            Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
+        ) {
+            const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
+            if (pickupPath && pickupPath.cost !== null && pickupPath.cost < best_pickup_distance) {
+                best_pickup_distance = pickupPath.cost;
+                best_pickup_option = ['go_pick_up', parcel.x, parcel.y, parcel.id, pickupPath.path];
+            }
+        }
+    }
+    
+    // Push the best option found or idle if no good options
+    if ( best_pickup_option !== null && best_pickup_distance !== null ) {
+        myAgent.push(best_pickup_option);
+    }
+    else if ( best_delivery_option === null ) {
+        myAgent.push(['idle']);
+    }
+}
+
+
+2- in INTENTION REVISION we should remove the intentions with score less than -1 (less than idle)
+
+3- here we dont check for idle intention
+
+if(!Number.isInteger(me.x) || !Number.isInteger(me.y)) return;
+
+        // Check if intention is already being executed (first 3 elements match)
+        const last = this.intention_queue[this.intention_queue.length - 1];
+        if ( last && last.predicate.slice(0, 3).join(' ') == predicate.slice(0, 3).join(' ') ) {
+            return; // intention is already being achieved
+        }
+        
+        // Check for duplicate intentions with same first 4 elements
+        if (this.intention_queue.some(i =>
+            i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ')
+        )) {
+            
