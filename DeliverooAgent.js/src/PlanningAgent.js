@@ -13,63 +13,10 @@ const client = new DeliverooApi(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
 )
 
-// ============================================================================
-// PAUSE/RESUME AND DELIVERY STATE MANAGEMENT
-// ============================================================================
-
-// Pause/Resume functionality for debugging and control
-let isPaused = false;
-let pauseResumePromise = null;
-let pauseResumeResolver = null;
-
 // Delivery state management to prevent immediate movement after delivery
 let justDelivered = false;
 let lastDeliveryTime = 0;
 
-// ============================================================================
-// KEYBOARD INPUT HANDLING
-// ============================================================================
-
-// Setup keyboard listener for pause/resume functionality
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
-readline.emitKeypressEvents(process.stdin);
-process.stdin.setRawMode(true);
-
-/**
- * Handle keyboard input for pause/resume and program termination
- */
-process.stdin.on('keypress', (str, key) => {
-    if (key.name === 'p' && !isPaused) {
-        console.log('\nProgram PAUSED. Press "r" to resume...');
-        isPaused = true;
-        pauseResumePromise = new Promise(resolve => {
-            pauseResumeResolver = resolve;
-        });
-    } else if (key.name === 'r' && isPaused) {
-        console.log('Program RESUMED.');
-        isPaused = false;
-        if (pauseResumeResolver) {
-            pauseResumeResolver();
-            pauseResumeResolver = null;
-        }
-    } else if (key.ctrl && key.name === 'c') {
-        console.log('\nProgram terminated.');
-        process.exit();
-    }
-});
-
-/**
- * Helper function to check pause state and wait if paused
- */
-async function checkPause() {
-    if (isPaused && pauseResumePromise) {
-        await pauseResumePromise;
-    }
-}
 
 // ============================================================================
 // PDDL DOMAIN AND ACTIONS
@@ -154,7 +101,7 @@ client.onConfig(cfg => {
 });
 
 // ============================================================================
-// GLOBAL STATE MANAGEMENT
+// BELIEF STATE MANAGEMENT
 // ============================================================================
 
 /**
@@ -415,12 +362,8 @@ setInterval(() => {
  * Updates the state of other agents and manages collision avoidance
  */
 client.onAgentsSensing(async agents => {
-    await checkPause();
-    
-    const seenAgentIds = new Set();
     
     for (let a of agents) {
-        seenAgentIds.add(a.id);
         
         // Skip our own agent
         if (a.id === me.id) continue;
@@ -466,7 +409,7 @@ client.onAgentsSensing(async agents => {
     for (let [agentId, agent] of otherAgents) {
         const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
         const canSeeAgent = distance < config.AGENTS_OBSERVATION_DISTANCE;
-        const agentIsVisible = seenAgentIds.has(agentId);
+        const agentIsVisible = agents.find(a => a.id == agentId);
         
         if (canSeeAgent) {
             if (agentIsVisible) {
@@ -503,7 +446,6 @@ client.onAgentsSensing(async agents => {
  * Updates the state of free and carried parcels
  */
 client.onParcelsSensing( async (pp) => {
-    await checkPause();
     
     carriedParcels.clear();
 
@@ -540,19 +482,14 @@ client.onParcelsSensing( async (pp) => {
  * Checks that all nodes in the path exist in the current graph
  */
 function isPathValid(path) {
-    if (!path || !Array.isArray(path) || path.length === 0) {
-        console.log('Path validation failed: path is null, not array, or empty');
+    if (!path || !Array.isArray(path) || path.length === 0)
         return false;
+    
+    for (let nodeId of path) {
+        if (!global.graph || !global.graph.has(nodeId))
+            return false;
     }
     
-    console.log(`Validating path: ${path.join(' -> ')}`);
-    for (let nodeId of path) {
-        if (!global.graph || !global.graph.has(nodeId)) {
-            console.log(`Path validation failed: node ${nodeId} not found in graph`);
-            return false;
-        }
-    }
-    console.log('Path validation passed');
     return true;
 }
 
@@ -582,20 +519,15 @@ function generateOptions () {
     if (carriedTotal != 0) {
         const bestDelivery = utils.findClosestDelivery(me.x, me.y);
         if (bestDelivery && 'deliveryPoint' in bestDelivery && bestDelivery.deliveryPoint && bestDelivery.path && isPathValid(bestDelivery.path)) {
-            console.log(`Found delivery point at (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
-            console.log(`Delivery path: ${bestDelivery.path.join(' -> ')}`);
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
             best_distance = bestDelivery.distance;
-        } else {
-            console.log('No valid delivery point found or path is invalid');
         }
     }
 
     // Always consider pickup options too, and pick nearest
     for (const parcel of freeParcels.values()) {
         if (
-            Number.isInteger(me.x) && Number.isInteger(me.y) &&
-            Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
+            Number.isInteger(me.x) && Number.isInteger(me.y) && Number.isInteger(parcel.x) && Number.isInteger(parcel.y)
         ) {
             const pickupPath = utils.getShortestPath(me.x, me.y, parcel.x, parcel.y);
             if (pickupPath && pickupPath.path && pickupPath.cost < best_distance && isPathValid(pickupPath.path)) {
@@ -645,8 +577,6 @@ class IntentionRevision {
         await new Promise(res => setTimeout(res, 50));
 
         while ( true ) {
-            // Check for pause state
-            await checkPause();
 
             // Update PDDL belief set based on carried parcels
             if (carriedParcels.size == 0)
@@ -733,13 +663,6 @@ class IntentionRevision {
 
 // Initialize the planning agent
 const myAgent = new IntentionRevision();
-
-// Display control instructions
-console.log('\n🎮 Pause/Resume Controls:');
-console.log('   Press "p" to PAUSE the program');
-console.log('   Press "r" to RESUME the program');
-console.log('   Press "Ctrl+C" to exit\n');
-
 // Start the agent's main loop
 myAgent.loop();
 
