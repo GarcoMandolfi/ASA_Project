@@ -3,21 +3,34 @@ import { PddlDomain, PddlAction, PddlProblem, PddlExecutor, onlineSolver, Belief
 import * as utils from "./planningUtils.js"
 import readline from 'readline';
 
+// ============================================================================
+// PLANNING AGENT CONFIGURATION
+// ============================================================================
+
+// Initialize the Deliveroo API client with planning agent token
 const client = new DeliverooApi(
     'http://localhost:8080',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNiZGJmMSIsIm5hbWUiOiJUd29CYW5hbmFzIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NTEzNjA2NDF9.J5uTBh3yTrUviXsl0o8djdHoMQ03tS0CE0lnJUDdKCE'
 )
 
-// Pause/Resume functionality
+// ============================================================================
+// PAUSE/RESUME AND DELIVERY STATE MANAGEMENT
+// ============================================================================
+
+// Pause/Resume functionality for debugging and control
 let isPaused = false;
 let pauseResumePromise = null;
 let pauseResumeResolver = null;
 
-// Delivery state management
+// Delivery state management to prevent immediate movement after delivery
 let justDelivered = false;
 let lastDeliveryTime = 0;
 
-// Setup keyboard listener for pause/resume
+// ============================================================================
+// KEYBOARD INPUT HANDLING
+// ============================================================================
+
+// Setup keyboard listener for pause/resume functionality
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -26,6 +39,9 @@ const rl = readline.createInterface({
 readline.emitKeypressEvents(process.stdin);
 process.stdin.setRawMode(true);
 
+/**
+ * Handle keyboard input for pause/resume and program termination
+ */
 process.stdin.on('keypress', (str, key) => {
     if (key.name === 'p' && !isPaused) {
         console.log('\nProgram PAUSED. Press "r" to resume...');
@@ -46,15 +62,26 @@ process.stdin.on('keypress', (str, key) => {
     }
 });
 
-// Helper function to check pause state
+/**
+ * Helper function to check pause state and wait if paused
+ */
 async function checkPause() {
     if (isPaused && pauseResumePromise) {
         await pauseResumePromise;
     }
 }
 
+// ============================================================================
+// PDDL DOMAIN AND ACTIONS
+// ============================================================================
+
+// Global configuration object
 let config = {};
+
+// PDDL belief set for maintaining world state
 const pddlBeliefSet = new Beliefset();
+
+// Define PDDL actions for movement and delivery
 const moveRight = new PddlAction(
     'moveRight',
     '?A ?B',
@@ -90,8 +117,11 @@ const putDown = new PddlAction(
     'not (canDeliver)',
     async () => await client.emitPutdown()
 );
+// Create PDDL domain with all defined actions
 // @ts-ignore
 const pddlDomain = new PddlDomain( 'Deliveroo', moveRight, moveLeft, moveUp, moveDown, putDown );
+
+// Add predicates to the PDDL domain
 pddlDomain.addPredicate('tile ?A');
 pddlDomain.addPredicate('delivery ?A');
 pddlDomain.addPredicate('at ?A');
@@ -103,6 +133,7 @@ pddlDomain.addPredicate('left ?B ?A');
 pddlDomain.addPredicate('canDeliver');
 
 
+// Create PDDL executor for executing planned actions
 const pddlExecutor = new PddlExecutor(
     {name: 'moveRight', executor: async () => await client.emitMove('right')},
     {name: 'moveLeft', executor: async () => await client.emitMove('left')},
@@ -111,76 +142,100 @@ const pddlExecutor = new PddlExecutor(
     {name: 'putDown', executor: async () => await client.emitPutdown()});
 
 
+/**
+ * Handle configuration updates from the server
+ */
 client.onConfig(cfg => {
-    
     config = {
         ...cfg,
         PARCEL_DECADING_INTERVAL: utils.parseDecayInterval(cfg.PARCEL_DECADING_INTERVAL)
-        
     }
-
-    console.log(config);
-
+    console.log('Planning agent configuration received:', config);
 });
 
+// ============================================================================
+// GLOBAL STATE MANAGEMENT
+// ============================================================================
+
 /**
+ * Current agent state - updated via onYou events
  * @type { {id:string, name:string, x:number, y:number, score:number} }
  */
 const me = {id: null, name: null, x: null, y: null, score: null};
 
 /**
+ * Map of free parcels available for pickup
+ * Key: parcel ID, Value: parcel object with position, reward, and metadata
  * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number} > }
  */
 const freeParcels = new Map();
-// #######################################################################################################################
-// CHECK CARRIED BY
-//##########################################################################################################################
 
-// CHECK ID CONSISTENCY
 /**
+ * Map of parcels currently carried by this agent
+ * Key: parcel ID, Value: parcel object with reward and metadata
  * @type { Map< string, {id: string, reward:number, lastUpdate:number} > }
  */
 const carriedParcels = new Map();
 
 /**
+ * Map of other agents in the environment
+ * Key: agent ID, Value: agent object with position, movement state, and metadata
  * @type { Map< string, {id: string, x:number, y:number, lastUpdate:number, isMoving:boolean, direction:string, occupiedCells:Array<String>, status:string } > }
  */
 const otherAgents = new Map();
 
 /**
+ * Map of delivery points where parcels can be delivered
+ * Key: cell ID, Value: delivery cell object with position and type
  * @type { Map< string, {x:number, y:number, type:Number} > }
  */
 const deliveryCells = new Map();
 
 /**
+ * Map of generating cells where new parcels spawn
+ * Key: cell ID, Value: generating cell object with position and type
  * @type { Map< string, {x:number, y:number, type:Number} > }
  */
 const generatingCells = new Map();
 
-
 /**
+ * Array of strategic candidate positions for optimal parcel collection
+ * Each candidate has position, nearby generating cells count, and last visit time
  * @type { Array<{id: string, x: number, y: number, generatingCellsNearby: number, lastSeen: number}> }
  */
 const candidates = [];
 
+// Export global state for use in other modules
 export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, candidates}
 export {pddlBeliefSet, pddlDomain}
 
+/**
+ * Handle map initialization and setup
+ * Creates the navigation graph and identifies strategic positions
+ */
 client.onMap((width, height, tiles) => {
+    // Clear existing delivery cells
     deliveryCells.clear();
 
+    // Create 2D tile array and navigation graph
     const tiles2D = utils.createTiles2D(width, height, tiles);
     const { graph, nodePositions } = utils.createGraphFromTiles(width, height, tiles2D);
 
+    // Store global references for navigation
     global.graph = graph;
     global.nodePositions = nodePositions;
     global.mapWidth = width;
     global.mapHeight = height;
     global.tiles2D = tiles2D;
+    
+    // Generate strategic candidate positions
     makeCandidates();
-
 })
 
+/**
+ * Generate strategic candidate positions for optimal parcel collection
+ * Analyzes generating cells and selects positions that maximize coverage
+ */
 function makeCandidates() {
     if (!global.graph || !global.nodePositions) {
         console.log('Graph not ready for candidate generation');
@@ -189,9 +244,9 @@ function makeCandidates() {
 
     const parcelObsDistance = config.PARCELS_OBSERVATION_DISTANCE || 5;
     const allCells = [];
-    const processedCells = new Set(); // Track processed generating cells
+    const processedCells = new Set(); // Track processed generating cells to avoid redundancy
     
-    // Analyze each generating cell (green cell) only
+    // Analyze each generating cell (green cell) for strategic positioning
     for (const [nodeId, position] of global.nodePositions) {
         const { x, y } = position;
         
@@ -235,7 +290,7 @@ function makeCandidates() {
             }
         }
         
-        // Add generating cell to list
+        // Add generating cell to candidate list
         allCells.push({
             id: nodeId,
             x: x,
@@ -251,18 +306,18 @@ function makeCandidates() {
         }
     }
     
-    // Sort by number of generating cells nearby (descending)
+    // Sort by number of generating cells nearby (descending) to prioritize high-coverage positions
     allCells.sort((a, b) => b.generatingCellsNearby - a.generatingCellsNearby);
     
-    // Select top 3 candidates that are farthest from each other
+    // Select top 3 candidates that are farthest from each other for optimal coverage
     const selectedCandidates = [];
     
     if (allCells.length > 0) {
-        // Select first candidate (highest score)
+        // Select first candidate (highest coverage score)
         selectedCandidates.push(allCells[0]);
         
         if (allCells.length > 1) {
-            // Select second candidate: farthest from the first
+            // Select second candidate: farthest from the first for maximum spread
             let maxDistance = 0;
             let secondCandidate = null;
             
@@ -317,6 +372,8 @@ function makeCandidates() {
     // Update the global candidates list
     candidates.length = 0; // Clear existing candidates
     candidates.push(...selectedCandidates);
+    
+    // Ensure we always have 3 candidates (duplicate if necessary)
     if (candidates.length > 0) {
         while (candidates.length < 3) {
             candidates.push(candidates[0]);
@@ -328,6 +385,10 @@ function makeCandidates() {
     ));
 }
 
+/**
+ * Handle agent position and state updates
+ * Updates the agent's current position and triggers delivery calculations
+ */
 client.onYou( ( {id, name, x, y, score} ) => {
     me.id = id
     me.name = name
@@ -335,11 +396,16 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.y = y
     me.score = score
 
+    // Update delivery calculations when position is stable
     if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
         utils.findClosestDelivery(me.x, me.y);
     }
 } )
 
+/**
+ * Periodic parcel decay timer
+ * Reduces parcel rewards over time based on the decay interval
+ */
 setInterval(() => {
     if (!isFinite(config.PARCEL_DECADING_INTERVAL)) return;
 
@@ -348,6 +414,10 @@ setInterval(() => {
 }, 1000);
 
 
+/**
+ * Handle agent sensing and position tracking
+ * Updates the state of other agents and manages collision avoidance
+ */
 client.onAgentsSensing(async agents => {
     await checkPause();
     
@@ -359,8 +429,7 @@ client.onAgentsSensing(async agents => {
         // Skip our own agent
         if (a.id === me.id) continue;
         
-
-        
+        // Calculate agent movement state and occupied cells
         const isMoving = !Number.isInteger(a.x) || !Number.isInteger(a.y);
         const direction = utils.getAgentDirection(a);
         const occupiedCells = utils.getAgentOccupiedCells(a);
@@ -397,7 +466,7 @@ client.onAgentsSensing(async agents => {
         }
     }
     
-    // Check all tracked agents for visibility
+    // Check all tracked agents for visibility and update their status
     for (let [agentId, agent] of otherAgents) {
         const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
         const canSeeAgent = distance < config.AGENTS_OBSERVATION_DISTANCE;
@@ -405,7 +474,7 @@ client.onAgentsSensing(async agents => {
         
         if (canSeeAgent) {
             if (agentIsVisible) {
-                // Agent is visible - update last seen
+                // Agent is visible - update last seen timestamp
                 agent.lastUpdate = Date.now();
                 agent.status = 'visible';
                 otherAgents.set(agentId, agent);
@@ -433,33 +502,47 @@ client.onAgentsSensing(async agents => {
 });
 
 
+/**
+ * Handle parcel sensing and state management
+ * Updates the state of free and carried parcels
+ */
 client.onParcelsSensing( async (pp) => {
     await checkPause();
     
     carriedParcels.clear();
 
+    // Remove parcels that are no longer visible or have been picked up
     for (const [id, parcel] of freeParcels) {
         if (utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE && !pp.find(p => p.id === parcel.id))
             freeParcels.delete(id);
     }
 
+    // Process all sensed parcels
     for (const p of pp) {
         if (p.carriedBy === me.id && !carriedParcels.has(p.id)) {
+            // Parcel is being carried by this agent
             freeParcels.delete(p.id);
             carriedParcels.set(p.id, {id:p.id, reward:p.reward, lastUpdate:Date.now()});
         }
-        else if (p.carriedBy === null)
+        else if (p.carriedBy === null) {
+            // Parcel is free and available for pickup
             utils.parcelUpdate(p);
-        else
+        }
+        else {
+            // Parcel is being carried by another agent
             freeParcels.delete(p.id);
+        }
     }
 });
 
-// ###################################################################################################
+// ============================================================================
 // OPTIONS GENERATION AND FILTERING
-// ###################################################################################################
+// ============================================================================
 
-// Helper function to validate if a path is still valid
+/**
+ * Helper function to validate if a path is still valid
+ * Checks that all nodes in the path exist in the current graph
+ */
 function isPathValid(path) {
     if (!path || !Array.isArray(path) || path.length === 0) {
         console.log('Path validation failed: path is null, not array, or empty');
@@ -477,6 +560,10 @@ function isPathValid(path) {
     return true;
 }
 
+/**
+ * Generate and evaluate possible actions for the agent
+ * Prioritizes delivery when carrying parcels, then considers pickup options
+ */
 function generateOptions () {
     // Check if we just delivered and should wait before generating new options
     const timeSinceDelivery = Date.now() - lastDeliveryTime;
@@ -521,14 +608,14 @@ function generateOptions () {
             }
         }
     }
-    // Push the best option found
+    
+    // Push the best option found to the agent's intention queue
     if (best_option !== null && best_distance !== null) {
         myAgent.push(best_option);
     }
     else {
         myAgent.push(['idle']);
     }
-
 }
 
 
@@ -537,12 +624,17 @@ client.onAgentsSensing( generateOptions )
 client.onYou( generateOptions )
 
 
-// ###################################################################################################
-// INTENTION REVISION
-// ###################################################################################################
+// ============================================================================
+// INTENTION REVISION SYSTEM
+// ============================================================================
 
+// Track previous position for PDDL belief updates
 let [prevX, prevY] = [undefined, undefined];
 
+/**
+ * Main intention revision system that manages the agent's decision-making
+ * Processes intentions from the queue and generates new options when needed
+ */
 class IntentionRevision {
 
     #intention_queue = new Array();
@@ -550,26 +642,29 @@ class IntentionRevision {
         return this.#intention_queue;
     }
 
+    /**
+     * Main loop that processes intentions and manages the agent's behavior
+     */
     async loop ( ) {
         await new Promise(res => setTimeout(res, 50));
 
         while ( true ) {
-            // Check for pause
+            // Check for pause state
             await checkPause();
 
+            // Update PDDL belief set based on carried parcels
             if (carriedParcels.size == 0)
                 pddlBeliefSet.undeclare('canDeliver');
             else
                 pddlBeliefSet.declare('canDeliver');
 
-            // Consumes intention_queue if not empty
+            // Process intentions from the queue if available
             if ( this.intention_queue.length > 0 ) {
             
-                // Current intention
+                // Get the current intention to process
                 const intention = this.intention_queue[0];
                 
-                // Is queued intention still valid? Do I still want to achieve it?
-                // TODO this hard-coded implementation is an example
+                // Validate if the intention is still achievable
                 let id = intention.predicate[2]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
@@ -577,16 +672,17 @@ class IntentionRevision {
                     continue;
                 }
 
-                // Start achieving intention
+                // Execute the intention
                 await intention.achieve()
                 // Catch eventual error and continue
                 .catch( error => {
                 } );
 
-                // Remove from the queue
+                // Remove the completed intention from the queue
                 this.intention_queue.shift();
             }
             else {
+                // Generate new options when no intentions are pending
                 generateOptions();
             }
             // Postpone next iteration at setImmediate
@@ -594,18 +690,15 @@ class IntentionRevision {
         }
     }
 
-    // async push ( predicate ) { }
-
-    log ( ...args ) {
-        console.log( ...args )
-    }
-
+    /**
+     * Add a new intention to the queue
+     * Handles duplicate prevention and intention updates
+     */
     async push(predicate) {
-
+        // Only add intentions when position is stable
         if(!Number.isInteger(me.x) || !Number.isInteger(me.y)) return;
 
-        // Find existing index with same id (only for go_pick_up)
-        // Check if already queued
+        // Check if already queued (prevent duplicates)
         const last = this.intention_queue[this.intention_queue.length - 1];
         
         if ( last && last.predicate.slice(0, 3).join(' ') == predicate.slice(0, 3).join(' ') ) {
@@ -619,24 +712,24 @@ class IntentionRevision {
             return;
         }
 
-        // This is a reference to the actual object in the queue, not a copy
+        // Update existing intention if it exists
         let existingIntention = this.intention_queue.find(i => {
             return i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ');
         });
         if (existingIntention && existingIntention.predicate[0] != "idle")
             existingIntention.updateIntention(predicate);
         
+        // Create and add new intention
         const intention = new Intention( this, predicate );
         this.intention_queue.push( intention );
-        let i = intention.predicate;
 
-        // Sort by score descending
+        // Sort intentions by score (highest priority first)
         this.intention_queue.sort((a, b) => {
             let result  =  utils.getScore(b.predicate) - utils.getScore(a.predicate);
             return result;
         });
 
-        // Stop current if not at top
+        // Stop current intention if it's no longer at the top
         if (last) {
             last.stop();
         }
@@ -644,47 +737,55 @@ class IntentionRevision {
 }
 
 
+// Initialize the planning agent
 const myAgent = new IntentionRevision();
 
+// Display control instructions
 console.log('\n🎮 Pause/Resume Controls:');
 console.log('   Press "p" to PAUSE the program');
 console.log('   Press "r" to RESUME the program');
 console.log('   Press "Ctrl+C" to exit\n');
 
+// Start the agent's main loop
 myAgent.loop();
 
 
+/**
+ * Represents a single intention that the agent wants to achieve
+ * Manages the execution of plans to fulfill the intention
+ */
 class Intention {
 
     // Plan currently used for achieving the intention 
     #current_plan;
     
-    // This is used to stop the intention
+    // Flag to stop the intention execution
     #stopped = false;
     get stopped () {
         return this.#stopped;
     }
+    
+    /**
+     * Stop the intention and its current plan
+     */
     stop () {
-        // this.log( 'stop intention', ...this.#predicate );
         this.#stopped = true;
         if ( this.#current_plan)
             this.#current_plan.stop();
     }
 
     /**
-     * #parent refers to caller
+     * Reference to the parent intention revision system
      */
     #parent;
 
     /**
-     * @type { any[] } predicate is in the form ['go_to', x, y]
+     * The intention predicate in the form ['action', ...parameters]
+     * @type { any[] }
      */
     get predicate () {
         return this.#predicate;
     }
-    /**
-     * @type { any[] } predicate is in the form ['go_to', x, y]
-     */
     #predicate;
 
     constructor ( parent, predicate ) {
@@ -699,25 +800,28 @@ class Intention {
             console.log( ...args )
     }
 
+    /**
+     * Update the intention with new parameters
+     */
     updateIntention(predicate) {
-
         switch(predicate[0]){
             case "go_pick_up":
-                this.predicate[4] = predicate[4];
+                this.predicate[4] = predicate[4]; // Update path
                 break;
             case "go_deliver":
-                this.predicate[3] = predicate[3];
+                this.predicate[3] = predicate[3]; // Update path
                 break;
             default:
                 return false;
         }
-
         return true;
     }
 
     #started = false;
+    
     /**
-     * Using the plan library to achieve an intention
+     * Execute the intention using available plans
+     * Tries each plan in the library until one succeeds
      */
     async achieve () {
         // Cannot start twice
@@ -726,60 +830,65 @@ class Intention {
         else
             this.#started = true;
 
-        // Trying all plans in the library
+        // Try all plans in the library
         for (const planClass of planLibrary) {
 
-            // if stopped then quit
+            // Check if intention was stopped
             if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
 
-            // if plan is 'statically' applicable
+            // Check if plan is applicable to this intention
             if ( planClass.isApplicableTo( ...this.predicate ) ) {
-                // plan is instantiated
+                // Instantiate and execute the plan
                 this.#current_plan = new planClass(this.#parent);
                 this.log('achieving intention', ...this.predicate, 'with plan', planClass.name);
-                // and plan is executed and result returned
+                
                 try {
                     const plan_res = await this.#current_plan.execute( ...this.predicate );
-                    this.log( 'succesful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
+                    this.log( 'successful intention', ...this.predicate, 'with plan', planClass.name, 'with result:', plan_res );
                     return plan_res
-                // or errors are caught so to continue with next plan
                 } catch (error) {
                     this.log( 'failed intention', ...this.predicate,'with plan', planClass.name, 'with error:', error );
                 }
             }
-
         }
 
-        // if stopped then quit
+        // If stopped then quit
         if ( this.stopped ) throw [ 'stopped intention', ...this.predicate ];
 
-        // no plans have been found to satisfy the intention
-        // this.log( 'no plan satisfied the intention ', ...this.predicate );
+        // No plans found to satisfy the intention
         throw ['no plan satisfied the intention ', ...this.predicate ]
     }
-
 }
 
 
+// Plan library containing all available plan classes
 const planLibrary = [];
 
+/**
+ * Base class for all plans
+ * Provides common functionality for plan execution and sub-intention management
+ */
 class Plan {
 
-    // This is used to stop the plan
+    // Flag to stop the plan execution
     #stopped = false;
+    
+    /**
+     * Stop the plan and all its sub-intentions
+     */
     stop () {
-        // this.log( 'stop plan' );
         this.#stopped = true;
         for ( const i of this.#sub_intentions ) {
             i.stop();
         }
     }
+    
     get stopped () {
         return this.#stopped;
     }
 
     /**
-     * #parent refers to caller
+     * Reference to the parent intention
      */
     #parent;
 
@@ -794,25 +903,39 @@ class Plan {
             console.log( ...args )
     }
 
-    // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
+    // Array of sub-intentions that can be executed in parallel
     #sub_intentions = [];
 
+    /**
+     * Create and execute a sub-intention
+     */
     async subIntention ( predicate ) {
         const sub_intention = new Intention( this, predicate );
         this.#sub_intentions.push( sub_intention );
         return sub_intention.achieve();
     }
-
 }
 
+/**
+ * Plan for picking up parcels
+ * Moves to the parcel location and attempts pickup
+ */
 class GoPickUp extends Plan {
 
+    /**
+     * Check if this plan can handle the given intention
+     */
     static isApplicableTo ( go_pick_up, x, y, id, path ) {
         return go_pick_up == 'go_pick_up';
     }
 
+    /**
+     * Execute the pickup plan
+     */
     async execute ( go_pick_up, x, y, id, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
+        
+        // Move to the parcel location
         await this.subIntention( ['go_to', x, y, path] );
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         
@@ -827,15 +950,24 @@ class GoPickUp extends Plan {
             throw ['Not at pickup location'];
         }
     }
-
 }
 
+/**
+ * Plan for delivering parcels
+ * Uses PDDL planning with fallback to path-based delivery
+ */
 class GoDeliver extends Plan {
 
+    /**
+     * Check if this plan can handle the given intention
+     */
     static isApplicableTo ( go_deliver, x, y, path ) {
         return go_deliver == 'go_deliver';
     }
 
+    /**
+     * Execute the delivery plan
+     */
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         
@@ -858,21 +990,30 @@ class GoDeliver extends Plan {
             return true;
         }
     }
-
 }
 
+/**
+ * Plan for movement along a predefined path
+ * Handles collision detection and path validation
+ */
 class BlindMove extends Plan {
 
+    /**
+     * Check if this plan can handle the given intention
+     */
     static isApplicableTo ( go_to, x, y, path ) {
         return go_to == 'go_to';
     }
 
+    /**
+     * Execute the movement plan
+     */
     async execute ( go_to, x, y, path ) {
         if (path && Array.isArray(path) && path.length > 1) {
             this.log(`Starting movement to (${x}, ${y}) with path: ${path.join(' -> ')}`);
             this.log(`Current position: (${me.x}, ${me.y})`);
             
-            // path is an array of node strings like '(x,y)'
+            // Execute movement step by step along the path
             for (let i = 1; i < path.length; i++) {
                 if (this.stopped) throw ['stopped'];
                 
@@ -921,6 +1062,7 @@ class BlindMove extends Plan {
                     }
                 }
                 
+                // Execute the movement
                 let moved = null;
                 if (dx > 0) moved = await client.emitMove('right');
                 else if (dx < 0) moved = await client.emitMove('left');
@@ -969,16 +1111,29 @@ class BlindMove extends Plan {
     }
 }
 
+/**
+ * Plan for PDDL-based delivery
+ * Uses automated planning to find optimal delivery path
+ */
 class PddlDelivery extends Plan {
 
+    /**
+     * Check if this plan can handle the given intention
+     */
     static isApplicableTo(pddl_deliver) {
         return pddl_deliver == 'pddl_deliver';
     }
 
+    /**
+     * Execute the PDDL delivery plan
+     */
     async execute(pddl_deliver, x, y) {
         if (this.stopped) throw ['stopped'];
+        
+        // Update PDDL belief set with current position
         [prevX, prevY] = utils.updateBeliefPosition(prevX, prevY);
 
+        // Create PDDL problem for delivery
         let pddlProblem = new PddlProblem(
             'Deliveroo',
             pddlBeliefSet.objects.join(' '),
@@ -990,6 +1145,7 @@ class PddlDelivery extends Plan {
         this.log(`PDDL Problem - Carrying parcels: ${carriedParcels.size > 0 ? 'Yes' : 'No'}`);
         utils.pddlRemoveDoublePredicates();
 
+        // Generate plan using online solver
         let plan = await onlineSolver(pddlDomain.toPddlString(), pddlProblem.toPddlString());
         
         // Check if plan is valid and not empty
@@ -1026,7 +1182,7 @@ class PddlDelivery extends Plan {
                 throw ['PDDL planning failed - no valid plan found'];
         }
         
-        // Execute the plan
+        // Execute the generated plan
         try {
             this.log(`Executing PDDL plan with ${plan.length} steps: ${plan.join(' -> ')}`);
             
@@ -1080,15 +1236,24 @@ class PddlDelivery extends Plan {
             throw ['PDDL execution failed'];
         }
     }
-
 }
 
+/**
+ * Plan for simple delivery without PDDL
+ * Fallback delivery method when PDDL planning fails
+ */
 class SimpleDelivery extends Plan {
 
+    /**
+     * Check if this plan can handle the given intention
+     */
     static isApplicableTo(simple_deliver, x, y) {
         return simple_deliver == 'simple_deliver';
     }
 
+    /**
+     * Execute the simple delivery plan
+     */
     async execute(simple_deliver, x, y) {
         if (this.stopped) throw ['stopped'];
         
@@ -1127,24 +1292,37 @@ class SimpleDelivery extends Plan {
             throw ['Not at delivery location'];
         }
     }
-
 }
 
+/**
+ * Plan for idle movement when no specific tasks are available
+ * Prioritizes moving to strategic candidate positions, then random movement
+ */
 class IdleMove extends Plan {
 
+    // Available movement directions
     static directions = ['up', 'right', 'down', 'left'];
     static LastDir = Math.floor(Math.random() * IdleMove.directions.length);
     static _prevCell = null;
 
+    /**
+     * Check if this plan can handle the given intention
+     */
     static isApplicableTo(idle) {
         return idle == 'idle';
     }
 
+    /**
+     * Execute the idle movement plan
+     */
     async execute(go_to) {
         if (this.stopped) throw ['stopped'];
+        
         let noCandidates = true;
         let bestCandidate = null;
         let bestCandidatePath = null;
+        
+        // First, try to move to strategic candidate positions
         if (candidates.length > 0) {
             // Sort candidates by lastSeen (oldest first)
             const sortedCandidates = [...candidates].sort((a, b) => a.lastSeen - b.lastSeen);
@@ -1165,9 +1343,9 @@ class IdleMove extends Plan {
                 return true;
             }
         }
+        
+        // If no candidates available, perform random movement
         if(noCandidates){
-
-
             const x = me.x;
             const y = me.y;
             const currentNodeId = '(' + x + ',' + y + ')';
@@ -1244,7 +1422,7 @@ class IdleMove extends Plan {
     }
 }
 
-// plan classes are added to plan library 
+// Register all plan classes in the plan library
 planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )

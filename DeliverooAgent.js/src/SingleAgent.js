@@ -1,90 +1,125 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 import * as utils from "./utils.js"
 
+// ============================================================================
+// AGENT CONFIGURATION AND INITIALIZATION
+// ============================================================================
+
 // Get agent number from command line arguments
 const agentNumber = process.argv[2] || '1'; // Default to agent 1 if no argument provided
+
+// JWT tokens for authentication - each agent has a unique token
 const AGENT1_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIwNTE2NiIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAxIiwidGVhbUlkIjoiNWUxNmRlIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5Mzg1fQ.eyiEl2lqQ0ez1ZWdkRIz4QCJh-hZA6EFi3B-0Yp9Cg0'
-const AGENT2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU1ZTA0ZSIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAyIiwidGVhbUlkIjoiMmJmYmZiIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5MzkyfQ.TJ8TUSPjzaEP1Sq79ejqSxA33ZaH-fcf32goUuLLQHA'
+const AGENT2_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU1ZTA0ZSIsIm5hbWUiOiJBbmRpYW1vIGHCoHNjaWFyZSAyIiwidGVhbUlkIjoiMmJmYmZiIiwidGVhbU5hbWUiOiJBbmRpYW1vIGHCoXNjaWFyZSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzUyMTQ5MzkyfQ.TJ8TUSPjzaEP1Sq79ejqSxA33ZaH-fcf32goUuLLQHA'
 
 // Select token based on agent number
 const selectedToken = agentNumber === '1' ? AGENT1_TOKEN : AGENT2_TOKEN;
 console.log(`Starting agent ${agentNumber} with token: ${selectedToken.substring(0, 50)}...`);
 
+// Initialize the Deliveroo API client
 const client = new DeliverooApi(
     'http://localhost:8080',
     selectedToken
 )
 
+// Global configuration object - populated when config is received
 let config = {};
 
+// Handle configuration updates from the server
 client.onConfig(cfg => {
-    
     config = {
         ...cfg,
         PARCEL_DECADING_INTERVAL: utils.parseDecayInterval(cfg.PARCEL_DECADING_INTERVAL)
-        
     }
-
-    console.log(config);
-
+    console.log('Agent configuration received:', config);
 });
 
+// ============================================================================
+// BELIEF SET MANAGEMENT
+// ============================================================================
+
 /**
+ * Current agent state - updated via onYou events
  * @type { {id:string, name:string, x:number, y:number, score:number} }
  */
 const me = {id: null, name: null, x: null, y: null, score: null};
 
 /**
+ * Map of free parcels available for pickup
+ * Key: parcel ID, Value: parcel object with position, reward, and metadata
  * @type { Map< string, {id: string, carriedBy?: string, x:number, y:number, reward:number, lastUpdate:number} > }
  */
 const freeParcels = new Map();
-// #######################################################################################################################
-// CHECK CARRIED BY
-//##########################################################################################################################
 
-// CHECK ID CONSISTENCY
 /**
+ * Map of parcels currently carried by this agent
+ * Key: parcel ID, Value: parcel object with reward and metadata
  * @type { Map< string, {id: string, reward:number, lastUpdate:number} > }
  */
 const carriedParcels = new Map();
 
 /**
+ * Map of other agents in the environment
+ * Key: agent ID, Value: agent object with position, movement state, and metadata
  * @type { Map< string, {id: string, x:number, y:number, lastUpdate:number, isMoving:boolean, direction:string, occupiedCells:Array<String>, status:string } > }
  */
 const otherAgents = new Map();
 
 /**
+ * Map of delivery points where parcels can be delivered
+ * Key: cell ID, Value: delivery cell object with position and type
  * @type { Map< string, {x:number, y:number, type:Number} > }
  */
 const deliveryCells = new Map();
 
 /**
+ * Map of generating cells where new parcels spawn
+ * Key: cell ID, Value: generating cell object with position and type
  * @type { Map< string, {x:number, y:number, type:Number} > }
  */
 const generatingCells = new Map();
 
 /**
+ * Array of strategic candidate positions for optimal parcel collection
+ * Each candidate has position, nearby generating cells count, and last visit time
  * @type { Array<{id: string, x: number, y: number, generatingCellsNearby: number, lastSeen: number}> }
  */
 const candidates = [];
 
+// Export global state for use by other modules
 export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, candidates}
 
+// ============================================================================
+// CALLBACKS
+// ============================================================================
+
+/**
+ * Handle map initialization and setup
+ * Creates the navigation graph and generates strategic candidate positions
+ */
 client.onMap((width, height, tiles) => {
     deliveryCells.clear();
 
+    // Create 2D tile array and navigation graph
     const tiles2D = utils.createTiles2D(width, height, tiles);
     const { graph, nodePositions } = utils.createGraphFromTiles(width, height, tiles2D);
 
+    // Store graph data globally for pathfinding
     global.graph = graph;
     global.nodePositions = nodePositions;
     global.mapWidth = width;
     global.mapHeight = height;
     global.tiles2D = tiles2D;
+    
+    // Generate strategic candidate positions after graph is built
     makeCandidates();
-
 })
 
+/**
+ * Generate strategic candidate positions for optimal parcel collection
+ * Analyzes generating cells to find the best positions with maximum coverage
+ * Optimizes performance by avoiding redundant calculations for connected cells
+ */
 function makeCandidates() {
     if (!global.graph || !global.nodePositions) {
         console.log('Graph not ready for candidate generation');
@@ -93,7 +128,7 @@ function makeCandidates() {
 
     const parcelObsDistance = config.PARCELS_OBSERVATION_DISTANCE || 5;
     const allCells = [];
-    const processedCells = new Set(); // Track processed generating cells
+    const processedCells = new Set(); // Track processed generating cells to avoid redundancy
     
     // Analyze each generating cell (green cell) only
     for (const [nodeId, position] of global.nodePositions) {
@@ -122,7 +157,7 @@ function makeCandidates() {
             if (pathResult && pathResult.cost !== null && pathResult.cost <= parcelObsDistance) {
                 generatingCellsNearby++;
                 
-                // Check if this cell is directly connected (path length = 1, no grey cells in between)
+                // Check if this cell is directly connected (no grey cells in between)
                 if (pathResult.path) {
                     // Check if the path contains only generating cells (no grey cells)
                     let hasOnlyGeneratingCells = true;
@@ -139,7 +174,7 @@ function makeCandidates() {
             }
         }
         
-        // Add generating cell to list
+        // Add generating cell to candidate list
         allCells.push({
             id: nodeId,
             x: x,
@@ -155,18 +190,18 @@ function makeCandidates() {
         }
     }
     
-    // Sort by number of generating cells nearby (descending)
+    // Sort by number of generating cells nearby (descending) for optimal coverage
     allCells.sort((a, b) => b.generatingCellsNearby - a.generatingCellsNearby);
     
-    // Select top 3 candidates that are farthest from each other
+    // Select top 3 candidates that are farthest from each other for maximum coverage
     const selectedCandidates = [];
     
     if (allCells.length > 0) {
-        // Select first candidate (highest score)
+        // Select first candidate (highest score - most generating cells nearby)
         selectedCandidates.push(allCells[0]);
         
         if (allCells.length > 1) {
-            // Select second candidate: farthest from the first
+            // Select second candidate: farthest from the first for better distribution
             let maxDistance = 0;
             let secondCandidate = null;
             
@@ -218,12 +253,12 @@ function makeCandidates() {
         }
     }
     
-    // Update the global candidates list
+    // Update the global candidates list and ensure we have 3 candidates
     candidates.length = 0; // Clear existing candidates
     candidates.push(...selectedCandidates);
     if (candidates.length > 0) {
         while (candidates.length < 3) {
-            candidates.push(candidates[0]);
+            candidates.push(candidates[0]); // Duplicate first candidate if needed
         }   
     }
     
@@ -232,6 +267,10 @@ function makeCandidates() {
     ));
 }
 
+/**
+ * Handle agent state updates
+ * Updates current agent position and triggers delivery point finding when stationary
+ */
 client.onYou( ( {id, name, x, y, score} ) => {
     me.id = id
     me.name = name
@@ -239,11 +278,16 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.y = y
     me.score = score
 
+    // Find closest delivery point when agent is at a stationary position
     if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
         utils.findClosestDelivery(me.x, me.y);
     }
 } )
 
+/**
+ * Periodic parcel decay timer
+ * Reduces parcel rewards over time based on the configured decay interval
+ */
 setInterval(() => {
     if (!isFinite(config.PARCEL_DECADING_INTERVAL)) return;
 
@@ -252,6 +296,10 @@ setInterval(() => {
 }, 1000);
 
 
+/**
+ * Handle agent sensing events
+ * Updates information about other agents in the environment and manages pathfinding obstacles
+ */
 client.onAgentsSensing(agents => {
     const seenAgentIds = new Set();
     
@@ -261,8 +309,7 @@ client.onAgentsSensing(agents => {
         // Skip our own agent
         if (a.id === me.id) continue;
         
-
-        
+        // Calculate agent movement state and occupied cells
         const isMoving = !Number.isInteger(a.x) || !Number.isInteger(a.y);
         const direction = utils.getAgentDirection(a);
         const occupiedCells = utils.getAgentOccupiedCells(a);
@@ -292,11 +339,11 @@ client.onAgentsSensing(agents => {
             status: 'visible'
         });
         
-        // Block new positions
+        // Block new positions to prevent pathfinding conflicts
         utils.blockAgentPositions(a.id, occupiedCells);
     }
     
-    // Check all tracked agents for visibility
+    // Check all tracked agents for visibility and update their status
     for (let [agentId, agent] of otherAgents) {
         const distance = Math.abs(agent.x - me.x) + Math.abs(agent.y - me.y);
         const canSeeAgent = distance < config.AGENTS_OBSERVATION_DISTANCE;
@@ -304,7 +351,7 @@ client.onAgentsSensing(agents => {
         
         if (canSeeAgent) {
             if (agentIsVisible) {
-                // Agent is visible - update last seen
+                // Agent is visible - update last seen timestamp
                 agent.lastUpdate = Date.now();
                 agent.status = 'visible';
                 otherAgents.set(agentId, agent);
@@ -332,30 +379,45 @@ client.onAgentsSensing(agents => {
 });
 
 
+/**
+ * Handle parcel sensing events
+ * Updates the state of free and carried parcels based on current observations
+ */
 client.onParcelsSensing( async (pp) => {
     carriedParcels.clear();
 
+    // Remove parcels that are no longer visible or have been picked up
     for (const [id, parcel] of freeParcels) {
         if (utils.manhattanDistance({ x: parcel.x, y: parcel.y }, me) < config.PARCELS_OBSERVATION_DISTANCE && !pp.find(p => p.id === parcel.id))
             freeParcels.delete(id);
     }
 
+    // Process all sensed parcels
     for (const p of pp) {
         if (p.carriedBy === me.id && !carriedParcels.has(p.id)) {
+            // Parcel is being carried by this agent
             freeParcels.delete(p.id);
             carriedParcels.set(p.id, {id:p.id, reward:p.reward, lastUpdate:Date.now()});
         }
-        else if (p.carriedBy === null)
+        else if (p.carriedBy === null) {
+            // Parcel is free and available for pickup
             utils.parcelUpdate(p);
-        else
+        }
+        else {
+            // Parcel is carried by another agent - remove from free parcels
             freeParcels.delete(p.id);
+        }
     }
 });
 
-// ###################################################################################################
-// OPTIONS GENERATION AND FILTERING
-// ###################################################################################################
+// ============================================================================
+// OPTION GENERATION and FILTERING
+// ============================================================================
 
+/**
+ * Generate the best action option based on current state
+ * Prioritizes delivery if carrying parcels, otherwise looks for pickup opportunities
+ */
 function generateOptions () {
     const carriedTotal = utils.carriedValue();
 
@@ -384,27 +446,32 @@ function generateOptions () {
             }
         }
     }
-    // Push the best option found
+    
+    // Push the best option found or idle if no good options
     if (best_option !== null && best_distance !== null) {
         myAgent.push(best_option);
     }
     else {
         myAgent.push(['idle']);
     }
-
 }
 
 
+// Register option generation as event handlers
 client.onParcelsSensing( generateOptions )
 client.onAgentsSensing( generateOptions )
 client.onYou( generateOptions )
 
 
-// ###################################################################################################
-// INTENTION REVISION
-// ###################################################################################################
+// ============================================================================
+// INTENTION REVISION SYSTEM
+// ============================================================================
 
 
+/**
+ * Main intention revision system that manages the agent's action queue
+ * Processes intentions in priority order and handles intention validation
+ */
 class IntentionRevision {
 
     #intention_queue = new Array();
@@ -412,6 +479,9 @@ class IntentionRevision {
         return this.#intention_queue;
     }
 
+    /**
+     * Main control loop that processes intentions and generates new options
+     */
     async loop ( ) {
         await new Promise(res => setTimeout(res, 50));
         while ( true ) {
@@ -421,8 +491,7 @@ class IntentionRevision {
                 // Current intention
                 const intention = this.intention_queue[0];
                 
-                // Is queued intention still valid? Do I still want to achieve it?
-                // TODO this hard-coded implementation is an example
+                // Validate if the queued intention is still valid
                 let id = intention.predicate[3]
                 let p = freeParcels.get(id)
                 if ( !utils.stillValid(intention.predicate) ) {
@@ -440,6 +509,7 @@ class IntentionRevision {
                 this.intention_queue.shift();
             }
             else {
+                // Generate new options when queue is empty
                 generateOptions();
             }
             // Postpone next iteration at setImmediate
@@ -447,18 +517,23 @@ class IntentionRevision {
         }
     }
 
-    // async push ( predicate ) { }
 
+    /**
+     * Log messages for debugging
+     */
     log ( ...args ) {
         console.log( ...args )
     }
 
+    /**
+     * Add a new intention to the queue with duplicate checking and priority sorting
+     * @param {Array} predicate - The action predicate to be executed
+     */
     async push(predicate) {
 
         if(!Number.isInteger(me.x) || !Number.isInteger(me.y)) return;
 
-        // Find existing index with same id (only for go_pick_up)
-        // Check if already queued
+        // Check if already queued (same action type and target)
         const last = this.intention_queue[this.intention_queue.length - 1];
         
         if ( last && last.predicate.slice(0, 3).join(' ') == predicate.slice(0, 3).join(' ') ) {
@@ -472,7 +547,7 @@ class IntentionRevision {
             return;
         }
 
-        // This is a reference to the actual object in the queue, not a copy
+        // Update existing intention if found, otherwise create new one
         let existingIntention = this.intention_queue.find(i => {
             return i.predicate.slice(0, 4).join(' ') === predicate.slice(0, 4).join(' ');
         });
@@ -481,15 +556,14 @@ class IntentionRevision {
         
         const intention = new Intention( this, predicate );
         this.intention_queue.push( intention );
-        let i = intention.predicate;
 
-        // Sort by score descending
+        // Sort by score descending to prioritize high-value actions
         this.intention_queue.sort((a, b) => {
             let result  =  utils.getScore(b.predicate) - utils.getScore(a.predicate);
             return result;
         });
 
-        // Stop current if not at top
+        // Stop current intention if it's no longer at the top
         if (last) {
             last.stop();
         }
@@ -608,14 +682,24 @@ class Intention {
 }
 
 
+// ============================================================================
+// PLAN LIBRARY AND EXECUTION
+// ============================================================================
+
+/**
+ * Library of available plans for executing different types of actions
+ */
 const planLibrary = [];
 
+/**
+ * Base class for all plans that can be executed by the agent
+ * Provides common functionality for plan management and sub-intention handling
+ */
 class Plan {
 
     // This is used to stop the plan
     #stopped = false;
     stop () {
-        // this.log( 'stop plan' );
         this.#stopped = true;
         for ( const i of this.#sub_intentions ) {
             i.stop();
@@ -626,7 +710,7 @@ class Plan {
     }
 
     /**
-     * #parent refers to caller
+     * Reference to the parent intention revision system
      */
     #parent;
 
@@ -634,6 +718,9 @@ class Plan {
         this.#parent = parent;
     }
 
+    /**
+     * Log messages with proper indentation for debugging
+     */
     log ( ...args ) {
         if ( this.#parent && this.#parent.log )
             this.#parent.log( '\t', ...args )
@@ -641,9 +728,15 @@ class Plan {
             console.log( ...args )
     }
 
-    // this is an array of sub intention. Multiple ones could eventually being achieved in parallel.
+    /**
+     * Array of sub-intentions that can be executed in parallel
+     */
     #sub_intentions = [];
 
+    /**
+     * Create and execute a sub-intention as part of this plan
+     * @param {Array} predicate - The action predicate for the sub-intention
+     */
     async subIntention ( predicate ) {
         const sub_intention = new Intention( this, predicate );
         this.#sub_intentions.push( sub_intention );
@@ -652,12 +745,22 @@ class Plan {
 
 }
 
+/**
+ * Plan for picking up parcels
+ * Moves to the parcel location and attempts to pick it up
+ */
 class GoPickUp extends Plan {
 
+    /**
+     * Check if this plan can handle the given action
+     */
     static isApplicableTo ( go_pick_up, x, y, id, path ) {
         return go_pick_up == 'go_pick_up';
     }
 
+    /**
+     * Execute the pickup action: move to location and pick up parcel
+     */
     async execute ( go_pick_up, x, y, id, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
@@ -668,12 +771,22 @@ class GoPickUp extends Plan {
 
 }
 
+/**
+ * Plan for delivering parcels to delivery points
+ * Moves to the delivery location and attempts to put down parcels
+ */
 class GoDeliver extends Plan {
 
+    /**
+     * Check if this plan can handle the given action
+     */
     static isApplicableTo ( go_deliver, x, y, path ) {
         return go_deliver == 'go_deliver';
     }
 
+    /**
+     * Execute the delivery action: move to location and put down parcels
+     */
     async execute ( go_deliver, x, y, path ) {
         if ( this.stopped ) throw ['stopped']; // if stopped then quit
         await this.subIntention( ['go_to', x, y, path] );
@@ -684,12 +797,22 @@ class GoDeliver extends Plan {
 
 }
 
+/**
+ * Plan for moving to a specific location using pathfinding
+ * Follows a pre-calculated path to reach the target destination
+ */
 class BlindMove extends Plan {
 
+    /**
+     * Check if this plan can handle the given action
+     */
     static isApplicableTo ( go_to, x, y, path ) {
         return go_to == 'go_to';
     }
 
+    /**
+     * Execute the movement action: follow the path step by step
+     */
     async execute ( go_to, x, y, path ) {
         if (path && Array.isArray(path) && path.length > 1) {
             // path is an array of node strings like '(x,y)'
@@ -716,23 +839,37 @@ class BlindMove extends Plan {
     }
 }
 
+/**
+ * Plan for idle movement and strategic positioning
+ * Either moves to strategic candidate positions or performs random exploration
+ */
 class IdleMove extends Plan {
 
+    // Available movement directions for random exploration
     static directions = ['up', 'right', 'down', 'left'];
     static LastDir = Math.floor(Math.random() * IdleMove.directions.length);
     static _prevCell = null;
 
+    /**
+     * Check if this plan can handle the given action
+     */
     static isApplicableTo(idle) {
         return idle == 'idle';
     }
 
+    /**
+     * Execute idle movement: prioritize strategic positions, fallback to random movement
+     */
     async execute(go_to) {
         if (this.stopped) throw ['stopped'];
+        
         let noCandidates = true;
         let bestCandidate = null;
         let bestCandidatePath = null;
+        
+        // Try to move to strategic candidate positions first
         if (candidates.length > 0) {
-            // Sort candidates by lastSeen (oldest first)
+            // Sort candidates by lastSeen (oldest first) for better coverage
             const sortedCandidates = [...candidates].sort((a, b) => a.lastSeen - b.lastSeen);
             
             // Find the first candidate with a valid path
@@ -751,8 +888,10 @@ class IdleMove extends Plan {
                 return true;
             }
         }
+        
+        // Fallback to random movement if no valid candidates
         if(noCandidates){
-
+            // Perform random exploration when no strategic candidates are available
             const x = me.x;
             const y = me.y;
             const currentNodeId = '(' + x + ',' + y + ')';
@@ -760,14 +899,14 @@ class IdleMove extends Plan {
             let foundMove = false;
             let skippedPrev = null;
 
-            // Shuffle directions for equal chance
+            // Shuffle directions for equal chance of movement
             const dirs = IdleMove.directions.slice();
             for (let i = dirs.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
             }
 
-            // Try all directions, skipping previous cell if possible
+            // Try all directions, avoiding backtracking when possible
             for (const dir of dirs) {
                 let [targetX, targetY] = [x, y];
                 if (dir === 'up') targetY++;
@@ -775,16 +914,21 @@ class IdleMove extends Plan {
                 else if (dir === 'left') targetX--;
                 else if (dir === 'right') targetX++;
                 const targetNodeId = '(' + targetX + ',' + targetY + ')';
+                
+                // Check if the target cell is valid and reachable
                 if (
                     global.graph &&
                     global.graph.has(currentNodeId) &&
                     global.graph.has(targetNodeId) &&
                     global.graph.get(currentNodeId).has(targetNodeId)
                 ) {
+                    // Skip previous cell to avoid immediate backtracking
                     if (prevCell && targetNodeId === prevCell) {
                         skippedPrev = { dir, targetX, targetY, targetNodeId };
                         continue;
                     }
+                    
+                    // Attempt to move in the chosen direction
                     let moveResult = null;
                     switch (dir) {
                         case 'up': moveResult = await client.emitMove('up'); break;
@@ -801,7 +945,7 @@ class IdleMove extends Plan {
                 }
             }
 
-            // If no move found and we skipped the previous cell, try it now
+            // If no move found and we skipped the previous cell, try it now as fallback
             if (!foundMove && skippedPrev) {
                 const { dir, targetNodeId } = skippedPrev;
                 let moveResult = null;
@@ -819,7 +963,7 @@ class IdleMove extends Plan {
             }
 
             if (!foundMove) {
-                // No valid move found, remain idle
+                // No valid move found, remain idle and reset state
                 IdleMove.LastDir = (IdleMove.LastDir + 1) % 4;
                 IdleMove._prevCell = null;
             }
@@ -829,7 +973,7 @@ class IdleMove extends Plan {
     }
 }
 
-// plan classes are added to plan library 
+// Register all plan classes in the plan library
 planLibrary.push( GoPickUp )
 planLibrary.push( GoDeliver )
 planLibrary.push( BlindMove )

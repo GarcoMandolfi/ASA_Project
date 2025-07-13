@@ -1,11 +1,14 @@
 import {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells} from "./SingleAgent.js";
 
+// ============================================================================
+// UTILITY FUNCTIONS FOR SINGLE AGENT SYSTEM
+// ============================================================================
 
-
-// Parse duration strings like '1s', '2s', etc. to milliseconds
-// For now this is For Decay Interval only, but can be extended for other durations
-// 'infinite' is treated as Infinity
-
+/**
+ * Parse duration strings like '1s', '2s', etc. to milliseconds
+ * For now this is For Decay Interval only, but can be extended for other durations
+ * 'infinite' is treated as Infinity
+ */
 function parseDecayInterval(str) {
     if (typeof str !== 'string') {
         throw new Error(`Invalid input: expected a string but got ${typeof str}`);
@@ -28,7 +31,10 @@ function parseDecayInterval(str) {
 
 
 
-//Simple Manhattan distance between two cells
+/**
+ * Calculate Manhattan distance between two cells
+ * Uses rounded coordinates to handle floating-point positions
+ */
 function manhattanDistance( {x:x1, y:y1}, {x:x2, y:y2}) {
     const dx = Math.abs( Math.round(x1) - Math.round(x2) )
     const dy = Math.abs( Math.round(y1) - Math.round(y2) )
@@ -37,9 +43,10 @@ function manhattanDistance( {x:x1, y:y1}, {x:x2, y:y2}) {
 
 
 
-// this function is used to decay the parcels
-// it is called every time the agent updates its state
-// it is used to decay the parcels based on the decay interval
+/**
+ * Decay parcel rewards over time based on the decay interval
+ * Called periodically to reduce parcel values and remove expired parcels
+ */
 function decayParcels() {
     let now = Date.now();
 
@@ -63,7 +70,10 @@ function decayParcels() {
 }
 
 
-// Helper function to create 2D tile array from flat tiles array
+/**
+ * Create 2D tile array from flat tiles array
+ * Identifies delivery points and generating cells during map processing
+ */
 function createTiles2D(width, height, tiles) {
     const tiles2D = [];
     for (let x = 0; x < width; x++) {
@@ -77,7 +87,7 @@ function createTiles2D(width, height, tiles) {
     for (let tile of tiles) {
         tiles2D[tile.x][tile.y] = tile;
         
-        // Check for delivery points (type 2)
+        // Check for delivery points (type 2) and generating cells (type 1)
         if (tile.type === 2)
             deliveryCells.set("(" + tile.x + "," + tile.y + ")", tile);
         else if (tile.type === 1)
@@ -88,7 +98,10 @@ function createTiles2D(width, height, tiles) {
 }
 
 
-// Helper function to create graph from tiles
+/**
+ * Create navigation graph from 2D tile array
+ * Builds adjacency graph for pathfinding and navigation
+ */
 function createGraphFromTiles(width, height, tiles2D) {
     const graph = new Map(); // nodeId -> Set of neighbor nodeIds
     const nodePositions = new Map(); // nodeId -> {x, y, type}
@@ -142,7 +155,10 @@ function createGraphFromTiles(width, height, tiles2D) {
 
 
 
-// Helper function to determine agent's occupied cells based on position
+/**
+ * Determine agent's occupied cells based on position
+ * Handles both stationary and moving agents for collision detection
+ */
 function getAgentOccupiedCells(agent) {
     let x = agent.x;
     let y = agent.y;
@@ -160,9 +176,7 @@ function getAgentOccupiedCells(agent) {
     if (isMovingX) {
         // Agent is moving horizontally
         const floorX = Math.floor(x);
-        const ceilX = Math.ceil(x);
-        const targetX = (x - floorX) < 0.5 ? floorX : ceilX;
-        
+        const ceilX = Math.ceil(x);        
         // Agent occupies both the cell it's leaving and the cell it's entering
         occupiedCells.push("(" + floorX + "," + Math.floor(y) + ")");
         occupiedCells.push("(" + ceilX + "," + Math.floor(y) + ")");
@@ -172,7 +186,6 @@ function getAgentOccupiedCells(agent) {
         // Agent is moving vertically
         const floorY = Math.floor(y);
         const ceilY = Math.ceil(y);
-        const targetY = (y - floorY) < 0.5 ? floorY : ceilY;
         
         // Agent occupies both the cell it's leaving and the cell it's entering
         occupiedCells.push("(" + Math.floor(x) + "," + floorY + ")");
@@ -184,7 +197,10 @@ function getAgentOccupiedCells(agent) {
 }
 
 
-// Helper function to determine agent's movement direction
+/**
+ * Determine agent's movement direction based on position
+ * Returns direction for moving agents or 'stationary' for stopped agents
+ */
 function getAgentDirection(agent) {
     let x = agent.x;
     let y = agent.y;
@@ -198,13 +214,11 @@ function getAgentDirection(agent) {
     
     if (isMovingX) {
         const floorX = Math.floor(x);
-        const ceilX = Math.ceil(x);
         return (x - floorX) < 0.5 ? 'left' : 'right';
     }
     
     if (isMovingY) {
         const floorY = Math.floor(y);
-        const ceilY = Math.ceil(y);
         return (y - floorY) < 0.5 ? 'down' : 'up';
     }
     
@@ -212,7 +226,10 @@ function getAgentDirection(agent) {
 }
 
 
-// Helper function to temporarily block agent positions in the graph
+/**
+ * Temporarily block agent positions in the navigation graph
+ * Removes occupied cells from the graph to prevent pathfinding through them
+ */
 function blockAgentPositions(agentId, occupiedCells) {
     if (!global.graph) return;
     
@@ -230,11 +247,13 @@ function blockAgentPositions(agentId, occupiedCells) {
 }
 
 
-// Helper function to unblock agent positions in the graph
+/**
+ * Unblock agent positions in the navigation graph
+ * Restores previously blocked cells to the graph for pathfinding
+ */
 function unblockAgentPositions(agentId, occupiedCells) {
     if (!global.graph || !global.nodePositions) return;
     
-    // For each occupied cell, restore it to the graph
     for (let cell of occupiedCells) {
         // Remove parentheses and split to get x and y as numbers
         const [x, y] = cell.replace(/[()]/g, '').split(',').map(Number);
@@ -244,7 +263,17 @@ function unblockAgentPositions(agentId, occupiedCells) {
         if (tile && tile.type !== 0) {
             // Add the cell back to the graph
             global.graph.set(cell, new Set());
-            
+        }
+    }
+    // For each occupied cell, restore it to the graph
+    for (let cell of occupiedCells) {
+        // Remove parentheses and split to get x and y as numbers
+        const [x, y] = cell.replace(/[()]/g, '').split(',').map(Number);
+        
+        // Check if this cell should be a valid node (not a wall)
+        const tile = global.tiles2D[x][y];
+        if (tile && tile.type !== 0) {
+                        
             // Add edges to adjacent cells that are also unblocked
             const directions = [
                 { dx: -1, dy: 0 }, // left
@@ -275,6 +304,10 @@ function unblockAgentPositions(agentId, occupiedCells) {
     }
 }
 
+/**
+ * Dijkstra's shortest path algorithm
+ * Finds the shortest path between two nodes in the navigation graph
+ */
 function dijkstra(startId, endId) {
     if (!global.graph) {
         return null;
@@ -357,6 +390,10 @@ function dijkstra(startId, endId) {
 }
 
 
+/**
+ * Find the closest delivery point from the current position
+ * Returns the nearest reachable delivery point with path information
+ */
 function findClosestDelivery(x, y) {
     if (!global.graph) {
         return {cost: null, path: null, pathSize: null};
@@ -403,12 +440,14 @@ function findClosestDelivery(x, y) {
             pathSize: bestPath.length
         };
     } else {
-        
         return {cost: null, path: null, pathSize: null};
     }
 }
 
-// Function to check if a path is still valid (all nodes exist in graph)
+/**
+ * Check if a path is still valid (all nodes exist in graph)
+ * Used to validate paths before attempting movement
+ */
 function isPathValid(path) {
     if (!path || path.length === 0) return false;
     
@@ -420,6 +459,10 @@ function isPathValid(path) {
     return true;
 }
 
+/**
+ * Update parcel information in the free parcels map
+ * Adds or updates parcel data, removes parcels with reward <= 1
+ */
 function parcelUpdate(parcel) {
     if ( parcel.reward > 1 ) {
         freeParcels.set ( parcel.id, {
@@ -432,13 +475,17 @@ function parcelUpdate(parcel) {
 }
 
 
+/**
+ * Calculate score for different types of intentions
+ * Used to prioritize intentions in the agent's decision-making
+ */
 function getScore ( predicate ) {
 
     if (!predicate) return;
     const type = predicate[0];
 
     if (type === 'go_deliver') {
-
+        // Score delivery intentions based on reward vs. decay during travel
         const x = predicate[1];
         const y = predicate[2];
         let deliveryPath = predicate[3];
@@ -461,13 +508,11 @@ function getScore ( predicate ) {
 
         let score = deliveryReward - overallDecay;
 
-        // score = Math.max(score, 0);
-
         return score;
     }
 
     if (type === 'go_pick_up') {
-        
+        // Score pickup intentions based on reward vs. travel time and decay
         const x = predicate[1];
         const y = predicate[2];
 
@@ -494,7 +539,6 @@ function getScore ( predicate ) {
         const rewardEstimate = reward - decaySteps - expectedDecay;
         const score = rewardEstimate;
 
-        // const score = Math.max(rewardEstimate, 0); // +1 to avoid division by zero
         return score;
     }
 
@@ -507,11 +551,19 @@ function getScore ( predicate ) {
 }
 
 
+/**
+ * Calculate total value of carried parcels
+ * Returns sum of all carried parcel rewards
+ */
 function carriedValue() {
     return Array.from(carriedParcels.values()).reduce((sum, p) => sum + (p.reward || 0), 0);
 }
 
 
+/**
+ * Check if an intention is still valid and achievable
+ * Validates intentions based on current world state
+ */
 function stillValid (predicate) {
 
     const type = predicate[0];
@@ -524,23 +576,23 @@ function stillValid (predicate) {
             if (p && p.carriedBy || p && pickupPath === null) return false;
             return true;
         case 'go_deliver':
-            // let deliveryPath = predicate[4];
-            if (carriedParcels.size == 0 /*|| deliveryPath.isPathValid === false*/)
+            // Check if we're still carrying parcels
+            if (carriedParcels.size == 0)
                 return false;
             return true;
         case 'idle':
-            // If not carrying any parcels and there are no free parcels, remain idle
-            // if (carriedParcels.size === 0 && freeParcels.size == 0)
-            //     return true;
-            // return false;
+            // Idle is always valid as a fallback
             return true;
         default:
             return false;
     }
-
 }
 
 
+/**
+ * Check if a position is free of other agents
+ * Used for collision detection and path validation
+ */
 function isFree(x, y) {
     
     for (const a of otherAgents.values()) {
@@ -550,9 +602,11 @@ function isFree(x, y) {
     return true;
 }
 
-// Function to get shortest path between two points
-// for future use. It can be called to get the shortest path between any two points.
-// Usage: getShortestPath(startX, startY, endX, endY)
+/**
+ * Get shortest path between two points
+ * Wrapper function for dijkstra algorithm with coordinate conversion
+ * Usage: getShortestPath(startX, startY, endX, endY)
+ */
 function getShortestPath(startX, startY, endX, endY) {
     const startId = "(" + startX + "," + startY + ")";
     const endId = "(" + endX + "," + endY + ")";

@@ -38,3 +38,23 @@ PDDL + SINGLE AGENT:
 25_c1_7 didn't check
 25_c1_8 didn't check
 25_c1_9 didn't check 
+
+
+
+
+
+
+CLEANING CODE SUGGESTIONS : 
+
+
+SINGLE AGENT: 
+1- if no candidate for idle move
+
+
+MUTLI AGENTS:
+1- if no candidate for idle move
+
+
+PLANNING AGENTS: 
+1- if no candidate for idle move
+
