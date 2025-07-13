@@ -587,18 +587,7 @@ function stillValid (predicate) {
 }
 
 
-/**
- * Check if a position is free of other agents
- * Used for collision detection and path validation
- */
-function isFree(x, y) {
-    
-    for (const a of otherAgents.values()) {
-        if (a.x == x && a.y == y) return false;
-    }
 
-    return true;
-}
 
 /**
  * Get shortest path between two points
@@ -635,4 +624,3 @@ export {parcelUpdate as parcelUpdate}
 export {getScore as getScore}
 export {carriedValue as carriedValue}
 export {stillValid as stillValid}
-export {isFree as isFree}

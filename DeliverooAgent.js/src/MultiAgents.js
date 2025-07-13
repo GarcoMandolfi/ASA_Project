@@ -71,10 +71,7 @@ const freeParcels = new Map();
  */
 const otherAgentParcels = new Set();
 
-// #######################################################################################################################
-// CHECK CARRIED BY
-//##########################################################################################################################
-// (Legacy section marker: can be removed or clarified if not used)
+
 
 /**
  * Map of parcels currently carried by this agent
@@ -112,9 +109,7 @@ const generatingCells = new Map();
 const candidates = [];
 
 // Communication and update timing constants
-const COMM_DELAY = config.MOVEMENT_DURATION; // ms
 const UPDATE_THRESHOLD = 100; // ms - minimum time difference for updates
-global.COMM_DELAY = COMM_DELAY;
 
 // Export global state for use in other modules
 export {deliveryCells, freeParcels, carriedParcels, otherAgents, me, config, generatingCells, OTHER_AGENT_ID, otherAgentParcels, candidates}
@@ -161,6 +156,7 @@ setInterval(() => {
 
 // ============================================================================
 // MESSAGE HANDLING AND STATE MERGE
+// Exchange information about the environment (e.g., packages and other agents’ position)
 // ============================================================================
 
 // Handle incoming messages from the other agent
@@ -203,7 +199,6 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
         // If the other agent is now carrying a parcel, remove it from our otherAgentParcels set
         for (const [id, receivedCarriedParcel] of receivedCarriedParcels) {
             if (otherAgentParcels.has(id)) {
-                console.log(`Removing parcel ${id} from otherAgentParcels - now being carried by other agent`);
                 otherAgentParcels.delete(id);
             }
         }
@@ -234,8 +229,8 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
         const [parcelId, theirScoreStr] = payload.split('|');
         const theirScore = parseFloat(theirScoreStr);
         const bestIntention = myAgent.intention_queue[0]?.predicate;
+        // If no best intention, reply 'no'
         if (!bestIntention) {
-            console.log('bestIntention is undefined');
             reply({ answer: 'no' });
             return;
         }
@@ -246,29 +241,24 @@ client.onMsg(async (fromId, fromName, msg, reply) => {
             bestIntention[3] === parcelId
         ) {
             const myScore = utils.getScore(bestIntention);
-            console.log('myScore', myScore);
-            console.log('theirScore', theirScore);
+
             // If our score is higher, keep the intention; otherwise, drop it
+            // reply yes if myScore >= theirScore, no otherwise
+            // if replied yes means we keep the intention and the other agent will drop his intention
+            // if replied no means we drop the intention and the other agent will keep his intention
             if (reply) {
                 if (myScore >= theirScore) {
                     reply({ answer: 'yes' }); // keep intention
-                    console.log('keeping intention');
-                    console.log('otherAgentParcels', otherAgentParcels);
-                    console.log('freeParcels keeping', freeParcels);
+
                 } else {
                     reply({ answer: 'no' }); // drop intention
                     otherAgentParcels.add(parcelId);
-                    console.log('nooooot keeping');
-                    console.log('otherAgentParcels', otherAgentParcels);
-                    console.log('freeParcels deleting', freeParcels);
+
                 }
             }
         } else {
             // If our best intention is not to pick up this parcel, always reply 'no'
-            console.log('bestIntention is not a go_pick_up');
-            console.log(bestIntention);
-            console.log('otherAgentParcels', otherAgentParcels);
-            console.log('freeParcels', freeParcels);
+
             reply({ answer: 'no' });
         }
         return;
@@ -466,13 +456,8 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.x = x
     me.y = y
     me.score = score
-    // Uncomment for debugging:
-    // console.log('me', me);
 
-    // Update delivery calculations when position is stable
-    if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
-        utils.findClosestDelivery(me.x, me.y);
-    }
+
 } )
 
 // ============================================================================

@@ -54,6 +54,12 @@ SINGLE AGENT:
                 return false;
                 check the Path for StillValid 
 
+2-  // Find closest delivery point when agent is at a stationary position
+    // if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
+    //     utils.findClosestDelivery(me.x, me.y);
+    // }
+    in OnYou
+
 
 MUTLI AGENTS:
 
@@ -63,6 +69,22 @@ MUTLI AGENTS:
                 return false;
                 check the Path for StillValid 
 
+2- const UPDATE_THRESHOLD = 100; // ms - minimum time difference for updates
+ 3-    const data = {
+        sendingFreeParcels: Object.fromEntries(freeParcels),
+        sendingOtherAgents: Object.fromEntries(otherAgentsToSend),
+        sendingCarriedParcels: Object.fromEntries(carriedParcels)
+    };
+    // Send the data to the other agent using the Deliveroo API
+    client.emitSay(OTHER_AGENT_ID, data);
+}, 100);
+100 should be changed to maybe 50 which is MOVE_DURATION
+
+4-  // Find closest delivery point when agent is at a stationary position
+    // if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
+    //     utils.findClosestDelivery(me.x, me.y);
+    // }
+    in OnYou
 
 PLANNING AGENTS: 
 1-      case 'go_deliver':
@@ -71,3 +93,8 @@ PLANNING AGENTS:
                 return false;
                 check the Path for StillValid 
 
+2-  // Find closest delivery point when agent is at a stationary position
+    // if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
+    //     utils.findClosestDelivery(me.x, me.y);
+    // }
+    in OnYou

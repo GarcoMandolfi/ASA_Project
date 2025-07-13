@@ -278,10 +278,7 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.y = y
     me.score = score
 
-    // Find closest delivery point when agent is at a stationary position
-    if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
-        utils.findClosestDelivery(me.x, me.y);
-    }
+
 } )
 
 /**

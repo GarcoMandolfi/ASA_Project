@@ -396,10 +396,6 @@ client.onYou( ( {id, name, x, y, score} ) => {
     me.y = y
     me.score = score
 
-    // Update delivery calculations when position is stable
-    if (global.graph && Number.isInteger(me.x) && Number.isInteger(me.y)) {
-        utils.findClosestDelivery(me.x, me.y);
-    }
 } )
 
 /**
