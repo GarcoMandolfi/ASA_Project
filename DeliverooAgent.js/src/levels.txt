@@ -169,4 +169,8 @@ if(!Number.isInteger(me.x) || !Number.isInteger(me.y)) return;
         )) {
             
 
-4- best_delivery_option output should be fixed to be corrected
+4- best_delivery_option output should be fixed to be corrected  
+
+5- the logic for makecandidates can improve
+6- also instead of just coping the first candidate i could force idle random move.
+7- using a graph only for green cells. to detect different subgraphs that they are disconnected. so choose as many candidates as disconnected subgraphs

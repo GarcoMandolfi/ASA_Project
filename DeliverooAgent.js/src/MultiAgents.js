@@ -288,6 +288,9 @@ client.onMap((width, height, tiles) => {
     global.tiles2D = tiles2D;
     // Generate strategic candidate positions for optimal parcel collection
     makeCandidates();
+    if (MY_AGENT_ID === AGENT2_ID) {
+        candidates.reverse();
+    }
 })
 
 /**
@@ -1293,10 +1296,7 @@ class IdleMove extends Plan {
             // Sort candidates by lastSeen (oldest first) to prioritize unexplored areas
             const sortedCandidates = [...candidates].sort((a, b) => a.lastSeen - b.lastSeen);
             
-            // Agent 2 uses reverse order for better coverage
-            if (MY_AGENT_ID === AGENT2_ID) {
-                sortedCandidates.reverse();
-            }
+
             
             // Find the first candidate with a valid path
             for (const candidate of sortedCandidates) {
