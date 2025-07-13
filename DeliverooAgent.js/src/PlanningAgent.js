@@ -581,7 +581,7 @@ function generateOptions () {
     // Check delivery option if carrying valuable parcels
     if (carriedTotal != 0) {
         const bestDelivery = utils.findClosestDelivery(me.x, me.y);
-        if (bestDelivery && bestDelivery.deliveryPoint&& isPathValid(bestDelivery.path)) {
+        if (bestDelivery && 'deliveryPoint' in bestDelivery && bestDelivery.deliveryPoint && bestDelivery.path && isPathValid(bestDelivery.path)) {
             console.log(`Found delivery point at (${bestDelivery.deliveryPoint.x}, ${bestDelivery.deliveryPoint.y})`);
             console.log(`Delivery path: ${bestDelivery.path.join(' -> ')}`);
             best_option = ['go_deliver', bestDelivery.deliveryPoint.x, bestDelivery.deliveryPoint.y, bestDelivery.path];
